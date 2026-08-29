@@ -1,26 +1,99 @@
 @import "tailwindcss";
 
+/* =========================================
+   ZENITH FINANCE DESIGN TOKENS
+   ========================================= */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Light theme */
+
+  --background: #eeeeed;
+
+  --surface: #f9f9f8;
+  --surface-secondary: #e7e7e6;
+  --surface-elevated: #ffffff;
+
+  --foreground: #131211;
+  --foreground-secondary: #4f5052;
+  --foreground-muted: #77797b;
+
+  --border: #dadad9;
+  --border-strong: #c4c4c2;
+
+  --primary: #3e51ff;
+  --primary-hover: #3043ef;
+  --primary-foreground: #ffffff;
+
+  --positive: #11875d;
+  --positive-soft: rgba(17, 135, 93, 0.1);
+
+  --negative: #c94444;
+  --negative-soft: rgba(201, 68, 68, 0.1);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+/* =========================================
+   DARK THEME
+   ========================================= */
+
+.dark {
+  --background: #131313;
+
+  --surface: #1c1c1c;
+  --surface-secondary: #242424;
+  --surface-elevated: #292929;
+
+  --foreground: #f5f5f5;
+  --foreground-secondary: #b6b6b6;
+  --foreground-muted: #858585;
+
+  --border: #303030;
+  --border-strong: #414141;
+
+  --primary: #0066ff;
+  --primary-hover: #1b76ff;
+  --primary-foreground: #ffffff;
+
+  --positive: #20d99a;
+  --positive-soft: rgba(32, 217, 154, 0.1);
+
+  --negative: #e15b5b;
+  --negative-soft: rgba(225, 91, 91, 0.1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+
+/* =========================================
+   GLOBAL STYLES
+   ========================================= */
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
 }
 
 body {
+  min-height: 100vh;
+  margin: 0;
+
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+
+/* =========================================
+   TEXT SELECTION
+   ========================================= */
+
+::selection {
+  background: var(--primary);
+  color: var(--primary-foreground);
 }

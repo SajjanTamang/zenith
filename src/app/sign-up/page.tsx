@@ -1,7 +1,7 @@
-import { LoginForm } from "@/components/auth/login-form";
+import { SignUpForm } from "@/components/auth/sign-up-form";
 import { ThemeToggle } from "@/components/theme-toggle";
 
-export default function LoginPage() {
+export default function SignUpPage() {
   return (
     <main
       className="relative flex min-h-screen items-center justify-center px-6 py-12"
@@ -27,7 +27,7 @@ export default function LoginPage() {
           </div>
 
           <h1 className="text-3xl font-semibold tracking-tight">
-            Zenith Finance
+            Create your account
           </h1>
 
           <p
@@ -36,7 +36,7 @@ export default function LoginPage() {
               color: "var(--foreground-secondary)",
             }}
           >
-            Welcome back. Sign in to continue.
+            Start your Zenith financial workspace.
           </p>
         </div>
 
@@ -47,7 +47,7 @@ export default function LoginPage() {
             border: "1px solid var(--border)",
           }}
         >
-          <LoginForm />
+          <SignUpForm />
         </div>
       </div>
     </main>
