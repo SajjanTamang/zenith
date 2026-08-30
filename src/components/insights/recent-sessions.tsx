@@ -5,8 +5,11 @@ import {
 
 type Session = {
   id: string;
+
   playing_amount?: string | number;
+
   game_type?: string;
+
   note?: string | null;
 
   status: "active" | "completed";
@@ -23,6 +26,7 @@ type Session = {
     | null;
 
   started_at: string;
+
   ended_at: string | null;
 };
 
@@ -31,26 +35,32 @@ export function RecentSessions({
 }: {
   sessions: Session[];
 }) {
-  const completedSessions = sessions
-    .filter(
-      (session) =>
-        session.status === "completed"
-    )
-    .slice(0, 4);
+  const completedSessions =
+    sessions
+      .filter(
+        (session) =>
+          session.status === "completed"
+      )
+      .slice(0, 4);
 
-  if (completedSessions.length === 0) {
+  if (
+    completedSessions.length === 0
+  ) {
     return (
       <div
-        className="rounded-[var(--radius-lg)] px-5 py-10 text-center"
+        className="py-8 text-center"
         style={{
-          backgroundColor: "var(--surface)",
-          border: "1px solid var(--border)",
+          borderTop:
+            "1px solid var(--border)",
+          borderBottom:
+            "1px solid var(--border)",
         }}
       >
         <p
-          className="text-sm"
+          className="text-xs"
           style={{
-            color: "var(--foreground-muted)",
+            color:
+              "var(--foreground-muted)",
           }}
         >
           No completed sessions yet.
@@ -60,86 +70,106 @@ export function RecentSessions({
   }
 
   return (
-    <div className="space-y-2">
-      {completedSessions.map((session) => {
-        const pnl = getSessionPnL(session);
+    <div
+      style={{
+        borderTop:
+          "1px solid var(--border)",
+      }}
+    >
+      {completedSessions.map(
+        (
+          session,
+          index
+        ) => {
+          const pnl =
+            getSessionPnL(
+              session
+            );
 
-        const pnlColor =
-          pnl > BigInt(0)
-            ? "var(--positive)"
-            : pnl < BigInt(0)
-              ? "var(--negative)"
-              : "var(--foreground)";
+          const pnlColor =
+            pnl > BigInt(0)
+              ? "var(--positive)"
+              : pnl < BigInt(0)
+                ? "var(--negative)"
+                : "var(--foreground)";
 
-        return (
-          <div
-            key={session.id}
-            className="flex items-center justify-between gap-4 rounded-[var(--radius-lg)] px-4 py-3"
-            style={{
-              backgroundColor: "var(--surface)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">
-                {session.game_type ||
-                  "Game Session"}
-              </p>
+          return (
+            <div
+              key={
+                session.id
+              }
+              className="flex items-center justify-between gap-4 py-4"
+              style={{
+                borderBottom:
+                  "1px solid var(--border)",
+              }}
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">
+                  {session.game_type ||
+                    "Game Session"}
+                </p>
 
-              <p
-                className="mt-1 text-xs"
-                style={{
-                  color:
-                    "var(--foreground-muted)",
-                }}
-              >
-                {formatSessionDate(
-                  session.started_at
-                )}
-              </p>
-
-              {session.playing_amount !==
-                undefined && (
                 <p
-                  className="mt-1 text-xs"
+                  className="mt-1 text-[10px]"
                   style={{
                     color:
                       "var(--foreground-muted)",
                   }}
                 >
-                  Played NPR{" "}
-                  {formatMoneyFromCents(
-                    moneyToCents(
-                      session.playing_amount
-                    )
+                  {formatSessionDate(
+                    session.started_at
                   )}
                 </p>
-              )}
-            </div>
 
-            <div className="shrink-0 text-right">
-              <p
-                className="text-sm font-semibold tabular-nums"
-                style={{
-                  color: pnlColor,
-                }}
-              >
-                {formatSignedMoney(pnl)}
-              </p>
+                {session.playing_amount !==
+                  undefined && (
+                  <p
+                    className="mt-1 text-[9px]"
+                    style={{
+                      color:
+                        "var(--foreground-muted)",
+                    }}
+                  >
+                    Played NPR{" "}
+                    {formatMoneyFromCents(
+                      moneyToCents(
+                        session.playing_amount
+                      )
+                    )}
+                  </p>
+                )}
+              </div>
 
-              <p
-                className="mt-1 text-xs capitalize"
-                style={{
-                  color:
-                    "var(--foreground-muted)",
-                }}
-              >
-                {session.result_type}
-              </p>
+              <div className="shrink-0 text-right">
+                <p
+                  className="text-xs font-semibold tabular-nums"
+                  style={{
+                    color:
+                      pnlColor,
+                  }}
+                >
+                  {formatSignedMoney(
+                    pnl
+                  )}
+                </p>
+
+                <p
+                  className="mt-1 text-[9px] capitalize"
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                >
+                  {
+                    session.result_type
+                  }
+                </p>
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        }
+      )}
     </div>
   );
 }
@@ -154,15 +184,20 @@ function getSessionPnL(
     return BigInt(0);
   }
 
-  const amount = moneyToCents(
-    session.result_amount
-  );
+  const amount =
+    moneyToCents(
+      session.result_amount
+    );
 
-  if (session.result_type === "win") {
+  if (
+    session.result_type === "win"
+  ) {
     return amount;
   }
 
-  if (session.result_type === "loss") {
+  if (
+    session.result_type === "loss"
+  ) {
     return -amount;
   }
 
@@ -172,13 +207,17 @@ function getSessionPnL(
 function formatSignedMoney(
   value: bigint
 ) {
-  if (value > BigInt(0)) {
+  if (
+    value > BigInt(0)
+  ) {
     return `+NPR ${formatMoneyFromCents(
       value
     )}`;
   }
 
-  if (value < BigInt(0)) {
+  if (
+    value < BigInt(0)
+  ) {
     return `-NPR ${formatMoneyFromCents(
       -value
     )}`;
@@ -193,10 +232,13 @@ function formatSessionDate(
   return new Intl.DateTimeFormat(
     "en-US",
     {
-      timeZone: "Asia/Kathmandu",
+      timeZone:
+        "Asia/Kathmandu",
       month: "short",
       day: "numeric",
       year: "numeric",
     }
-  ).format(new Date(value));
+  ).format(
+    new Date(value)
+  );
 }

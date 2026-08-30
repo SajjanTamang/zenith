@@ -71,8 +71,6 @@ export default async function QuickAddPage() {
             color: "var(--foreground-muted)",
           }}
         >
-          Game sessions will be added separately after the
-          transaction system is complete.
         </p>
       </div>
     </div>

@@ -1,15 +1,30 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import {
+  Check,
+  Equal,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
+
+import {
+  useState,
+  type FormEvent,
+} from "react";
+
 import { useRouter } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
+
 import {
   formatMoneyFromCents,
   moneyToCents,
 } from "@/lib/money";
 
-type ResultType = "win" | "loss" | "even";
+type ResultType =
+  | "win"
+  | "loss"
+  | "even";
 
 export function FinishSessionForm({
   sessionId,
@@ -20,20 +35,36 @@ export function FinishSessionForm({
 }) {
   const router = useRouter();
 
-  const [resultType, setResultType] =
-    useState<ResultType>("win");
+  const [
+    resultType,
+    setResultType,
+  ] = useState<ResultType>("win");
 
-  const [resultAmount, setResultAmount] =
-    useState("");
+  const [
+    resultAmount,
+    setResultAmount,
+  ] = useState("");
 
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
+
+  const playingAmountCents =
+    moneyToCents(playingAmount);
 
   const amount =
     resultType === "even"
       ? BigInt(0)
       : isPositiveMoney(resultAmount)
-        ? moneyToCents(resultAmount)
+        ? moneyToCents(
+            resultAmount.trim()
+          )
         : BigInt(0);
 
   const pnl =
@@ -43,13 +74,6 @@ export function FinishSessionForm({
         ? -amount
         : BigInt(0);
 
-  const pnlColor =
-    pnl > BigInt(0)
-      ? "var(--positive)"
-      : pnl < BigInt(0)
-        ? "var(--negative)"
-        : "var(--foreground)";
-
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>
   ) {
@@ -57,119 +81,207 @@ export function FinishSessionForm({
 
     setError("");
 
-    let cleanResultAmount = "0.00";
+    let cleanResultAmount =
+      "0.00";
 
-    if (resultType !== "even") {
-      cleanResultAmount = resultAmount.trim();
+    if (
+      resultType !== "even"
+    ) {
+      cleanResultAmount =
+        resultAmount.trim();
 
-      if (!isPositiveMoney(cleanResultAmount)) {
+      if (
+        !isPositiveMoney(
+          cleanResultAmount
+        )
+      ) {
         setError(
-          "Enter a result amount greater than 0."
+          "Enter a result amount greater than 0 with no more than 2 decimal places."
         );
+
         return;
       }
     }
 
     /*
-      Since playing amount represents the total amount
-      you planned to spend today, the day's loss cannot
-      be greater than that amount.
+      Playing amount represents the total amount
+      planned for today's session.
+
+      Therefore a loss cannot be larger than the
+      amount available to play with.
     */
     if (
       resultType === "loss" &&
-      moneyToCents(cleanResultAmount) >
-        moneyToCents(playingAmount)
+      moneyToCents(
+        cleanResultAmount
+      ) > playingAmountCents
     ) {
       setError(
         "Loss cannot be greater than today's playing amount."
       );
+
       return;
     }
 
     setLoading(true);
 
-    const supabase = createClient();
+    const supabase =
+      createClient();
 
-    const { error: updateError } = await supabase
+    const {
+      error: updateError,
+    } = await supabase
       .from("game_sessions")
       .update({
         status: "completed",
-        result_type: resultType,
-        result_amount: cleanResultAmount,
-        ended_at: new Date().toISOString(),
+
+        result_type:
+          resultType,
+
+        result_amount:
+          cleanResultAmount,
+
+        ended_at:
+          new Date().toISOString(),
       })
-      .eq("id", sessionId)
-      .eq("status", "active");
+      .eq(
+        "id",
+        sessionId
+      )
+      .eq(
+        "status",
+        "active"
+      );
 
     if (updateError) {
-      setError(updateError.message);
+      setError(
+        updateError.message
+      );
+
       setLoading(false);
+
       return;
     }
 
-    router.replace("/sessions");
+    router.replace(
+      "/sessions"
+    );
+
     router.refresh();
   }
 
-  return (
-    <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-      <div>
-        <p className="mb-3 text-sm font-medium">
-          How did today go?
-        </p>
+  function selectResultType(
+    type: ResultType
+  ) {
+    setResultType(type);
 
-        <div
-          className="grid grid-cols-3 rounded-[var(--radius-md)] p-1"
+    setError("");
+
+    if (type === "even") {
+      setResultAmount("");
+    }
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="mt-8"
+    >
+      
+
+      {/* Result */}
+      <section>
+        <p
+          className="text-[10px] font-medium uppercase tracking-[0.14em]"
           style={{
-            backgroundColor: "var(--surface-secondary)",
+            color:
+              "var(--foreground-muted)",
           }}
         >
+          Result
+        </p>
+
+        <h2 className="mt-1 text-sm font-semibold">
+          How did today go?
+        </h2>
+
+        <div className="mt-4 grid grid-cols-3 gap-2">
           <ResultButton
             label="Win"
-            active={resultType === "win"}
-            onClick={() => {
-              setResultType("win");
-              setError("");
-            }}
+            type="win"
+            active={
+              resultType === "win"
+            }
+            disabled={loading}
+            onClick={() =>
+              selectResultType(
+                "win"
+              )
+            }
           />
 
           <ResultButton
             label="Loss"
-            active={resultType === "loss"}
-            onClick={() => {
-              setResultType("loss");
-              setError("");
-            }}
+            type="loss"
+            active={
+              resultType === "loss"
+            }
+            disabled={loading}
+            onClick={() =>
+              selectResultType(
+                "loss"
+              )
+            }
           />
 
           <ResultButton
             label="Even"
-            active={resultType === "even"}
-            onClick={() => {
-              setResultType("even");
-              setResultAmount("");
-              setError("");
-            }}
+            type="even"
+            active={
+              resultType === "even"
+            }
+            disabled={loading}
+            onClick={() =>
+              selectResultType(
+                "even"
+              )
+            }
           />
         </div>
-      </div>
+      </section>
 
+      {/* Result amount */}
       {resultType !== "even" && (
-        <div>
+        <section className="mt-7">
           <label
             htmlFor="result-amount"
-            className="mb-2 block text-sm font-medium"
+            className="text-sm font-medium"
           >
             {resultType === "win"
               ? "Amount won"
               : "Amount lost"}
           </label>
 
-          <div className="relative">
+          <p
+            className="mt-1 text-xs leading-5"
+            style={{
+              color:
+                "var(--foreground-muted)",
+            }}
+          >
+            Enter only the net{" "}
+            {resultType === "win"
+              ? "profit"
+              : "loss"}{" "}
+            for the day.
+          </p>
+
+          <div className="relative mt-3">
             <span
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-sm"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-medium"
               style={{
-                color: "var(--foreground-muted)",
+                color:
+                  "var(--foreground-muted)",
               }}
             >
               NPR
@@ -179,123 +291,331 @@ export function FinishSessionForm({
               id="result-amount"
               type="text"
               inputMode="decimal"
+              autoComplete="off"
               value={resultAmount}
               onChange={(event) =>
-                setResultAmount(event.target.value)
+                setResultAmount(
+                  event.target.value
+                )
               }
               placeholder="0.00"
               disabled={loading}
-              className="h-12 w-full rounded-[var(--radius-md)] pl-14 pr-4 text-right text-sm tabular-nums outline-none"
+              className="h-12 w-full rounded-[var(--radius-md)] pl-14 pr-4 text-right text-sm font-semibold tabular-nums outline-none transition disabled:cursor-not-allowed disabled:opacity-60 focus:border-[var(--primary)]"
               style={{
-                backgroundColor: "var(--surface)",
-                border: "1px solid var(--border)",
-                color: "var(--foreground)",
+                backgroundColor:
+                  "var(--surface)",
+                border:
+                  "1px solid var(--border)",
+                color:
+                  "var(--foreground)",
               }}
             />
           </div>
-        </div>
+
+          {resultType === "loss" && (
+            <p
+              className="mt-2 text-[10px] leading-4"
+              style={{
+                color:
+                  "var(--foreground-muted)",
+              }}
+            >
+              Maximum loss: NPR{" "}
+              {formatMoneyFromCents(
+                playingAmountCents
+              )}
+            </p>
+          )}
+        </section>
       )}
 
-      <div
-        className="rounded-[var(--radius-lg)] p-5"
-        style={{
-          backgroundColor: "var(--surface-elevated)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <p
-          className="text-xs font-medium uppercase tracking-[0.12em]"
+      {/* P&L preview */}
+      <section className="mt-7">
+        <div
+          className="rounded-[var(--radius-lg)] p-5"
           style={{
-            color: "var(--foreground-muted)",
+            backgroundColor:
+              getPnlBackground(
+                pnl
+              ),
+            border:
+              `1px solid ${getPnlBorder(
+                pnl
+              )}`,
           }}
         >
-          Today&apos;s P&amp;L
-        </p>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p
+                className="text-[10px] font-medium uppercase tracking-[0.14em]"
+                style={{
+                  color:
+                    "var(--foreground-muted)",
+                }}
+              >
+                Today&apos;s P&amp;L
+              </p>
 
-        <p
-          className="mt-2 text-2xl font-semibold tabular-nums"
-          style={{
-            color: pnlColor,
-          }}
-        >
-          {pnl > BigInt(0) ? "+" : ""}
-          NPR {formatMoneyFromCents(pnl)}
-        </p>
-      </div>
+              <p
+                className="mt-2 text-2xl font-semibold tracking-tight tabular-nums"
+                style={{
+                  color:
+                    getPnlColor(
+                      pnl
+                    ),
+                }}
+              >
+                {formatSignedMoney(
+                  pnl
+                )}
+              </p>
+            </div>
 
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+              style={{
+                backgroundColor:
+                  "var(--surface-secondary)",
+                color:
+                  getPnlColor(
+                    pnl
+                  ),
+              }}
+            >
+              {resultType ===
+              "win" ? (
+                <TrendingUp
+                  size={18}
+                />
+              ) : resultType ===
+                "loss" ? (
+                <TrendingDown
+                  size={18}
+                />
+              ) : (
+                <Equal
+                  size={18}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Error */}
       {error && (
         <div
-          className="rounded-[var(--radius-md)] px-4 py-3 text-sm"
+          className="mt-4 rounded-[var(--radius-md)] px-4 py-3 text-xs leading-5"
           style={{
-            backgroundColor: "var(--negative-soft)",
-            color: "var(--negative)",
+            backgroundColor:
+              "var(--negative-soft)",
+            border:
+              "1px solid var(--negative)",
+            color:
+              "var(--negative)",
           }}
         >
           {error}
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="h-12 w-full rounded-[var(--radius-md)] text-sm font-semibold disabled:opacity-60"
-        style={{
-          backgroundColor: "var(--primary)",
-          color: "var(--primary-foreground)",
-        }}
-      >
-        {loading
-          ? "Finishing session..."
-          : "Finish Session"}
-      </button>
+      {/* Actions */}
+      <div className="mt-6">
+        <button
+          type="submit"
+          disabled={loading}
+          className="flex h-12 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+          style={{
+            backgroundColor:
+              "var(--primary)",
+            color:
+              "var(--primary-foreground)",
+          }}
+        >
+          <Check size={16} />
 
-      <button
-        type="button"
-        disabled={loading}
-        onClick={() => router.back()}
-        className="h-11 w-full text-sm font-medium"
-        style={{
-          color: "var(--foreground-secondary)",
-        }}
-      >
-        Cancel
-      </button>
+          {loading
+            ? "Finishing session..."
+            : "Finish Session"}
+        </button>
+
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() =>
+            router.back()
+          }
+          className="mt-2 h-11 w-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60"
+          style={{
+            color:
+              "var(--foreground-secondary)",
+          }}
+        >
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }
 
 function ResultButton({
   label,
+  type,
   active,
+  disabled,
   onClick,
 }: {
   label: string;
+  type: ResultType;
   active: boolean;
+  disabled: boolean;
   onClick: () => void;
 }) {
+  const color =
+    type === "win"
+      ? "var(--positive)"
+      : type === "loss"
+        ? "var(--negative)"
+        : "var(--foreground-secondary)";
+
+  const activeBackground =
+    type === "win"
+      ? "var(--positive-soft)"
+      : type === "loss"
+        ? "var(--negative-soft)"
+        : "var(--surface-elevated)";
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className="h-10 rounded-[var(--radius-sm)] text-sm font-medium"
+      disabled={disabled}
+      className="flex h-12 items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
       style={{
-        backgroundColor: active
-          ? "var(--surface-elevated)"
-          : "transparent",
+        backgroundColor:
+          active
+            ? activeBackground
+            : "var(--surface)",
+
+        border: active
+          ? `1px solid ${color}`
+          : "1px solid var(--border)",
+
         color: active
-          ? "var(--foreground)"
+          ? color
           : "var(--foreground-muted)",
       }}
     >
+      {type === "win" && (
+        <TrendingUp size={15} />
+      )}
+
+      {type === "loss" && (
+        <TrendingDown size={15} />
+      )}
+
+      {type === "even" && (
+        <Equal size={15} />
+      )}
+
       {label}
     </button>
   );
 }
 
-function isPositiveMoney(value: string) {
-  if (!/^\d+(\.\d{1,2})?$/.test(value.trim())) {
+function formatSignedMoney(
+  value: bigint
+) {
+  if (
+    value > BigInt(0)
+  ) {
+    return `+NPR ${formatMoneyFromCents(
+      value
+    )}`;
+  }
+
+  if (
+    value < BigInt(0)
+  ) {
+    return `-NPR ${formatMoneyFromCents(
+      -value
+    )}`;
+  }
+
+  return "NPR 0.00";
+}
+
+function getPnlColor(
+  value: bigint
+) {
+  if (
+    value > BigInt(0)
+  ) {
+    return "var(--positive)";
+  }
+
+  if (
+    value < BigInt(0)
+  ) {
+    return "var(--negative)";
+  }
+
+  return "var(--foreground)";
+}
+
+function getPnlBackground(
+  value: bigint
+) {
+  if (
+    value > BigInt(0)
+  ) {
+    return "var(--positive-soft)";
+  }
+
+  if (
+    value < BigInt(0)
+  ) {
+    return "var(--negative-soft)";
+  }
+
+  return "var(--surface)";
+}
+
+function getPnlBorder(
+  value: bigint
+) {
+  if (
+    value > BigInt(0)
+  ) {
+    return "var(--positive)";
+  }
+
+  if (
+    value < BigInt(0)
+  ) {
+    return "var(--negative)";
+  }
+
+  return "var(--border)";
+}
+
+function isPositiveMoney(
+  value: string
+) {
+  const cleanValue =
+    value.trim();
+
+  if (
+    !/^\d+(\.\d{1,2})?$/.test(
+      cleanValue
+    )
+  ) {
     return false;
   }
 
-  return moneyToCents(value) > BigInt(0);
+  return (
+    moneyToCents(
+      cleanValue
+    ) > BigInt(0)
+  );
 }

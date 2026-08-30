@@ -39,20 +39,27 @@ export default async function InsightsPage() {
   if (error) {
     return (
       <div>
-        <h1 className="text-2xl font-semibold">
+        <p
+          className="text-[10px] font-medium uppercase tracking-[0.15em]"
+          style={{
+            color: "var(--foreground-muted)",
+          }}
+        >
+          Performance
+        </p>
+
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
           Insights
         </h1>
 
         <div
           className="mt-6 rounded-[var(--radius-md)] p-4 text-sm"
           style={{
-            backgroundColor:
-              "var(--negative-soft)",
+            backgroundColor: "var(--negative-soft)",
             color: "var(--negative)",
           }}
         >
-          Could not load insights:{" "}
-          {error.message}
+          Could not load insights: {error.message}
         </div>
       </div>
     );
@@ -82,166 +89,274 @@ export default async function InsightsPage() {
 
   return (
     <div>
-      <p
-        className="text-xs font-medium uppercase tracking-[0.12em]"
-        style={{
-          color: "var(--foreground-muted)",
-        }}
-      >
-        Performance
-      </p>
-
-      <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-        Insights
-      </h1>
-
-      <section className="mt-8">
+      {/* Header */}
+      <section>
         <p
-          className="text-xs font-medium uppercase tracking-[0.12em]"
+          className="text-[10px] font-medium uppercase tracking-[0.15em]"
           style={{
             color: "var(--foreground-muted)",
           }}
         >
-          Lifetime cumulative P&amp;L
+          Performance
+        </p>
+
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+          Insights
+        </h1>
+      </section>
+
+      {/* Lifetime Hero */}
+      <section className="mt-8">
+        <p
+          className="text-[10px] font-medium uppercase tracking-[0.14em]"
+          style={{
+            color: "var(--foreground-muted)",
+          }}
+        >
+          Lifetime P&amp;L
         </p>
 
         <MoneyValue
           value={lifetime.totalPnL}
-          large
+          hero
         />
 
         <p
-          className="mt-2 text-xs"
+          className="mt-2 text-[10px]"
           style={{
             color: "var(--foreground-muted)",
           }}
         >
           {lifetime.totalSessions}{" "}
           {lifetime.totalSessions === 1
-            ? "completed session"
-            : "completed sessions"}
+            ? "session"
+            : "sessions"}
+          {" • "}
+          {lifetime.totalDays}{" "}
+          {lifetime.totalDays === 1
+            ? "playing day"
+            : "playing days"}
         </p>
-      </section>
 
-      <section className="mt-6">
-        <CumulativePnLChart
-          points={cumulativePoints}
-        />
-      </section>
-
-      <section className="mt-8">
-        <SectionLabel>
-          Current month
-        </SectionLabel>
-
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <MetricCard
-            label="Game P&L"
-            value={
-              <MoneyValue
-                value={thisMonth.totalPnL}
-              />
-            }
-          />
-
-          <MetricCard
-            label="Played"
-            value={
-              <NeutralMoney
-                value={
-                  thisMonth.totalPlayingAmount
-                }
-              />
-            }
-          />
-
-          <MetricCard
-            label="Sessions"
-            value={String(
-              thisMonth.totalSessions
-            )}
-          />
-
-          <MetricCard
-            label="Win rate"
-            value={`${thisMonth.winRate}%`}
+        <div className="mt-5">
+          <CumulativePnLChart
+            points={cumulativePoints}
           />
         </div>
       </section>
 
-      <section className="mt-8">
+      {/* Monthly Overview */}
+      <section
+        className="mt-9 border-t pt-7"
+        style={{
+          borderColor: "var(--border)",
+        }}
+      >
         <SectionLabel>
-          Performance summary
+          This month
         </SectionLabel>
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <MetricCard
-            label="Wins"
-            value={String(
-              lifetime.winningSessions
-            )}
-          />
+        <div
+          className="mt-4 rounded-[var(--radius-lg)] p-5"
+          style={{
+            backgroundColor: "var(--surface)",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <p
+            className="text-[9px] font-medium uppercase tracking-[0.14em]"
+            style={{
+              color: "var(--foreground-muted)",
+            }}
+          >
+            Monthly overview
+          </p>
 
-          <MetricCard
-            label="Losses"
-            value={String(
-              lifetime.losingSessions
-            )}
-          />
-
-          <MetricCard
-            label="Average P&L"
-            value={
-              <MoneyValue
-                value={lifetime.averagePnL}
-              />
-            }
-          />
-
-          <MetricCard
-            label="Avg playing amount"
-            value={
-              <NeutralMoney
-                value={
-                  lifetime.averagePlayingAmount
-                }
-              />
-            }
-          />
-
-          <MetricCard
-            label="Best day"
-            value={
-              lifetime.bestDay ? (
+          <div className="mt-5 grid grid-cols-2 gap-x-8 gap-y-6">
+            <CardMetric
+              label="P&L"
+              value={
                 <MoneyValue
+                  value={thisMonth.totalPnL}
+                />
+              }
+            />
+
+            <CardMetric
+              label="Played"
+              value={
+                <NeutralMoney
                   value={
-                    lifetime.bestDay.pnl
+                    thisMonth.totalPlayingAmount
                   }
                 />
-              ) : (
-                "—"
-              )
-            }
+              }
+            />
+
+            <CardMetric
+              label="Sessions"
+              value={String(
+                thisMonth.totalSessions
+              )}
+            />
+
+            <CardMetric
+              label="Win rate"
+              value={`${thisMonth.winRate}%`}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Performance Statistics */}
+      <section className="mt-8">
+        <SectionLabel>
+          Performance
+        </SectionLabel>
+
+        <div
+          className="mt-4 rounded-[var(--radius-lg)] p-5"
+          style={{
+            backgroundColor: "var(--surface)",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <p
+            className="text-[9px] font-medium uppercase tracking-[0.14em]"
+            style={{
+              color: "var(--foreground-muted)",
+            }}
+          >
+            Performance statistics
+          </p>
+
+          {/* Wins / Losses */}
+          <div className="mt-5 grid grid-cols-2 gap-x-8">
+            <CardMetric
+              label="Wins"
+              value={String(
+                lifetime.winningSessions
+              )}
+            />
+
+            <CardMetric
+              label="Losses"
+              value={String(
+                lifetime.losingSessions
+              )}
+            />
+          </div>
+
+          <div
+            className="my-5 border-t"
+            style={{
+              borderColor: "var(--border)",
+            }}
           />
 
-          <MetricCard
-            label="Worst day"
-            value={
-              lifetime.worstDay ? (
+          {/* Average values */}
+          <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+            <CardMetric
+              label="Average P&L"
+              value={
                 <MoneyValue
                   value={
-                    lifetime.worstDay.pnl
+                    lifetime.averagePnL
                   }
                 />
-              ) : (
-                "—"
-              )
-            }
+              }
+            />
+
+            <CardMetric
+              label="Avg played"
+              value={
+                <NeutralMoney
+                  value={
+                    lifetime.averagePlayingAmount
+                  }
+                />
+              }
+            />
+
+            <CardMetric
+              label="Best day"
+              value={
+                lifetime.bestDay ? (
+                  <MoneyValue
+                    value={
+                      lifetime.bestDay.pnl
+                    }
+                  />
+                ) : (
+                  <EmptyValue />
+                )
+              }
+            />
+
+            <CardMetric
+              label="Worst day"
+              value={
+                lifetime.worstDay ? (
+                  <MoneyValue
+                    value={
+                      lifetime.worstDay.pnl
+                    }
+                  />
+                ) : (
+                  <EmptyValue />
+                )
+              }
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Playing Days */}
+      <section
+        className="mt-8 border-t pt-7"
+        style={{
+          borderColor: "var(--border)",
+        }}
+      >
+        <SectionLabel>
+          Playing days
+        </SectionLabel>
+
+        <div
+          className="mt-4 grid grid-cols-3 overflow-hidden rounded-[var(--radius-lg)]"
+          style={{
+            backgroundColor: "var(--surface)",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <DayStat
+            label="Winning"
+            value={lifetime.winningDays}
+            tone="positive"
+          />
+
+          <DayStat
+            label="Losing"
+            value={lifetime.losingDays}
+            tone="negative"
+            borderLeft
+          />
+
+          <DayStat
+            label="Even"
+            value={lifetime.evenDays}
+            borderLeft
           />
         </div>
       </section>
 
-      <section className="mt-8">
+      {/* Recent Sessions */}
+      <section
+        className="mt-8 border-t pt-7"
+        style={{
+          borderColor: "var(--border)",
+        }}
+      >
         <div className="flex items-center justify-between">
           <SectionLabel>
             Recent sessions
@@ -249,7 +364,7 @@ export default async function InsightsPage() {
 
           <Link
             href="/sessions"
-            className="text-xs font-medium"
+            className="text-[10px] font-medium"
             style={{
               color: "var(--foreground-muted)",
             }}
@@ -258,7 +373,7 @@ export default async function InsightsPage() {
           </Link>
         </div>
 
-        <div className="mt-3">
+        <div className="mt-4">
           <RecentSessions
             sessions={typedSessions}
           />
@@ -275,7 +390,7 @@ function SectionLabel({
 }) {
   return (
     <h2
-      className="text-xs font-medium uppercase tracking-[0.12em]"
+      className="text-[10px] font-medium uppercase tracking-[0.15em]"
       style={{
         color: "var(--foreground-muted)",
       }}
@@ -285,7 +400,7 @@ function SectionLabel({
   );
 }
 
-function MetricCard({
+function CardMetric({
   label,
   value,
 }: {
@@ -293,15 +408,9 @@ function MetricCard({
   value: React.ReactNode;
 }) {
   return (
-    <div
-      className="rounded-[var(--radius-lg)] p-4"
-      style={{
-        backgroundColor: "var(--surface)",
-        border: "1px solid var(--border)",
-      }}
-    >
+    <div>
       <p
-        className="text-xs"
+        className="text-[9px] uppercase tracking-[0.11em]"
         style={{
           color: "var(--foreground-muted)",
         }}
@@ -309,19 +418,67 @@ function MetricCard({
         {label}
       </p>
 
-      <div className="mt-2 text-base font-semibold">
+      <div className="mt-2 text-sm font-semibold">
         {value}
       </div>
     </div>
   );
 }
 
+function DayStat({
+  label,
+  value,
+  tone,
+  borderLeft = false,
+}: {
+  label: string;
+  value: number;
+  tone?: "positive" | "negative";
+  borderLeft?: boolean;
+}) {
+  const color =
+    tone === "positive"
+      ? "var(--positive)"
+      : tone === "negative"
+        ? "var(--negative)"
+        : "var(--foreground)";
+
+  return (
+    <div
+      className="py-4 text-center"
+      style={{
+        borderLeft: borderLeft
+          ? "1px solid var(--border)"
+          : undefined,
+      }}
+    >
+      <p
+        className="text-base font-semibold tabular-nums"
+        style={{
+          color,
+        }}
+      >
+        {value}
+      </p>
+
+      <p
+        className="mt-1 text-[8px] uppercase tracking-[0.1em]"
+        style={{
+          color: "var(--foreground-muted)",
+        }}
+      >
+        {label}
+      </p>
+    </div>
+  );
+}
+
 function MoneyValue({
   value,
-  large = false,
+  hero = false,
 }: {
   value: bigint;
-  large?: boolean;
+  hero?: boolean;
 }) {
   const positive =
     value > BigInt(0);
@@ -329,15 +486,10 @@ function MoneyValue({
   const negative =
     value < BigInt(0);
 
-  const color =
-    positive
-      ? "var(--positive)"
-      : negative
-        ? "var(--negative)"
-        : "var(--foreground)";
-
   const absolute =
-    negative ? -value : value;
+    negative
+      ? -value
+      : value;
 
   const prefix =
     positive
@@ -346,11 +498,18 @@ function MoneyValue({
         ? "-"
         : "";
 
+  const color =
+    positive
+      ? "var(--positive)"
+      : negative
+        ? "var(--negative)"
+        : "var(--foreground)";
+
   return (
     <span
       className={
-        large
-          ? "mt-2 block text-3xl font-semibold tracking-tight tabular-nums"
+        hero
+          ? "mt-2 block text-[34px] font-semibold leading-none tracking-[-0.045em] tabular-nums"
           : "tabular-nums"
       }
       style={{
@@ -381,6 +540,18 @@ function NeutralMoney({
       {formatMoneyFromCents(
         absolute
       )}
+    </span>
+  );
+}
+
+function EmptyValue() {
+  return (
+    <span
+      style={{
+        color: "var(--foreground-muted)",
+      }}
+    >
+      —
     </span>
   );
 }

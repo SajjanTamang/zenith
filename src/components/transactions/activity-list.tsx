@@ -1,6 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import {
+  useMemo,
+  useState,
+} from "react";
+
 import {
   ArrowDownLeft,
   ArrowLeftRight,
@@ -14,7 +18,9 @@ import type {
   ActivityKind,
 } from "@/lib/activity";
 
-import { formatMoneyFromCents } from "@/lib/money";
+import {
+  formatMoneyFromCents,
+} from "@/lib/money";
 
 type ActivityFilter =
   | "all"
@@ -25,38 +31,59 @@ export function ActivityList({
 }: {
   items: ActivityItem[];
 }) {
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] =
-    useState<ActivityFilter>("all");
+  const [
+    search,
+    setSearch,
+  ] = useState("");
 
-  const filteredItems = useMemo(() => {
-    const query =
-      search.trim().toLowerCase();
+  const [
+    filter,
+    setFilter,
+  ] = useState<ActivityFilter>(
+    "all"
+  );
 
-    return items.filter((item) => {
-      const matchesFilter =
-        filter === "all" ||
-        item.kind === filter;
+  const filteredItems =
+    useMemo(() => {
+      const query =
+        search
+          .trim()
+          .toLowerCase();
 
-      const matchesSearch =
-        !query ||
-        item.searchText.includes(query);
+      return items.filter(
+        (item) => {
+          const matchesFilter =
+            filter === "all" ||
+            item.kind === filter;
 
-      return (
-        matchesFilter &&
-        matchesSearch
+          const matchesSearch =
+            !query ||
+            item.searchText.includes(
+              query
+            );
+
+          return (
+            matchesFilter &&
+            matchesSearch
+          );
+        }
       );
-    });
-  }, [items, search, filter]);
+    }, [
+      items,
+      search,
+      filter,
+    ]);
 
   return (
     <>
-      <div className="relative mt-6">
+      {/* Search */}
+      <div className="relative mt-7">
         <Search
-          size={17}
+          size={16}
           className="absolute left-4 top-1/2 -translate-y-1/2"
           style={{
-            color: "var(--foreground-muted)",
+            color:
+              "var(--foreground-muted)",
           }}
         />
 
@@ -64,101 +91,176 @@ export function ActivityList({
           type="search"
           value={search}
           onChange={(event) =>
-            setSearch(event.target.value)
+            setSearch(
+              event.target.value
+            )
           }
           placeholder="Search activity..."
-          className="h-11 w-full rounded-[var(--radius-md)] pl-11 pr-4 text-sm outline-none"
+          className="h-11 w-full rounded-[var(--radius-md)] pl-11 pr-4 text-sm outline-none transition focus:border-[var(--primary)]"
           style={{
-            backgroundColor: "var(--surface)",
-            border: "1px solid var(--border)",
-            color: "var(--foreground)",
+            backgroundColor:
+              "var(--surface)",
+            border:
+              "1px solid var(--border)",
+            color:
+              "var(--foreground)",
           }}
         />
       </div>
 
-      <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+      {/* Filters */}
+      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
         <FilterButton
           label="All"
-          active={filter === "all"}
-          onClick={() => setFilter("all")}
+          active={
+            filter === "all"
+          }
+          onClick={() =>
+            setFilter("all")
+          }
         />
 
         <FilterButton
           label="Income"
-          active={filter === "income"}
+          active={
+            filter === "income"
+          }
           onClick={() =>
-            setFilter("income")
+            setFilter(
+              "income"
+            )
           }
         />
 
         <FilterButton
           label="Expenses"
-          active={filter === "expense"}
+          active={
+            filter === "expense"
+          }
           onClick={() =>
-            setFilter("expense")
+            setFilter(
+              "expense"
+            )
           }
         />
 
         <FilterButton
           label="Transfers"
-          active={filter === "transfer"}
+          active={
+            filter === "transfer"
+          }
           onClick={() =>
-            setFilter("transfer")
+            setFilter(
+              "transfer"
+            )
           }
         />
 
         <FilterButton
           label="Games"
-          active={filter === "game"}
+          active={
+            filter === "game"
+          }
           onClick={() =>
-            setFilter("game")
+            setFilter(
+              "game"
+            )
           }
         />
       </div>
 
+      {/* Results */}
       {items.length === 0 ? (
         <EmptyActivity />
-      ) : filteredItems.length === 0 ? (
+      ) : filteredItems.length ===
+        0 ? (
         <div
           className="mt-8 rounded-[var(--radius-lg)] px-5 py-10 text-center"
           style={{
-            backgroundColor: "var(--surface)",
-            border: "1px solid var(--border)",
+            backgroundColor:
+              "var(--surface)",
+            border:
+              "1px solid var(--border)",
           }}
         >
           <p
             className="text-sm"
             style={{
-              color: "var(--foreground-muted)",
+              color:
+                "var(--foreground-muted)",
             }}
           >
-            No activity matches your search
-            or filter.
+            No activity matches
+            your search or filter.
           </p>
         </div>
       ) : (
-        <div className="mt-6 space-y-6">
+        <div className="mt-7 space-y-7">
           {groupItemsByDate(
             filteredItems
           ).map((group) => (
-            <section key={group.dateKey}>
-              <p
-                className="mb-3 text-xs font-medium uppercase tracking-[0.1em]"
+            <section
+              key={
+                group.dateKey
+              }
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <p
+                  className="text-[10px] font-medium uppercase tracking-[0.14em]"
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                >
+                  {group.label}
+                </p>
+
+                <span
+                  className="text-[10px]"
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                >
+                  {
+                    group.items
+                      .length
+                  }{" "}
+                  {group.items
+                    .length === 1
+                    ? "entry"
+                    : "entries"}
+                </span>
+              </div>
+
+              <div
+                className="overflow-hidden rounded-[var(--radius-lg)]"
                 style={{
-                  color:
-                    "var(--foreground-muted)",
+                  backgroundColor:
+                    "var(--surface)",
+                  border:
+                    "1px solid var(--border)",
                 }}
               >
-                {group.label}
-              </p>
-
-              <div className="space-y-2">
-                {group.items.map((item) => (
-                  <ActivityRow
-                    key={item.id}
-                    item={item}
-                  />
-                ))}
+                {group.items.map(
+                  (
+                    item,
+                    index
+                  ) => (
+                    <ActivityRow
+                      key={
+                        item.id
+                      }
+                      item={
+                        item
+                      }
+                      borderTop={
+                        index >
+                        0
+                      }
+                    />
+                  )
+                )}
               </div>
             </section>
           ))}
@@ -181,15 +283,20 @@ function FilterButton({
     <button
       type="button"
       onClick={onClick}
-      className="shrink-0 rounded-full px-4 py-2 text-xs font-medium"
+      className="shrink-0 rounded-full px-4 py-2 text-[11px] font-medium transition"
       style={{
-        backgroundColor: active
-          ? "var(--foreground)"
-          : "var(--surface)",
-        color: active
-          ? "var(--background)"
-          : "var(--foreground-secondary)",
-        border: "1px solid var(--border)",
+        backgroundColor:
+          active
+            ? "var(--foreground)"
+            : "var(--surface)",
+
+        color:
+          active
+            ? "var(--background)"
+            : "var(--foreground-secondary)",
+
+        border:
+          "1px solid var(--border)",
       }}
     >
       {label}
@@ -199,44 +306,42 @@ function FilterButton({
 
 function ActivityRow({
   item,
+  borderTop = false,
 }: {
   item: ActivityItem;
+  borderTop?: boolean;
 }) {
   const amount =
-    BigInt(item.amountCents);
+    BigInt(
+      item.amountCents
+    );
 
   const amountColor =
-    item.kind === "transfer"
+    item.kind ===
+    "transfer"
       ? "var(--foreground)"
-      : amount > BigInt(0)
+      : amount >
+          BigInt(0)
         ? "var(--positive)"
-        : amount < BigInt(0)
+        : amount <
+            BigInt(0)
           ? "var(--negative)"
           : "var(--foreground)";
 
-let amountText = "";
+  const amountText =
+    formatActivityAmount(
+      item.kind,
+      amount
+    );
 
-if (item.kind === "transfer") {
-  amountText = `NPR ${formatMoneyFromCents(
-    absoluteMoney(amount)
-  )}`;
-} else if (amount > BigInt(0)) {
-  amountText = `+NPR ${formatMoneyFromCents(
-    amount
-  )}`;
-} else if (amount < BigInt(0)) {
-  amountText = `-NPR ${formatMoneyFromCents(
-    absoluteMoney(amount)
-  )}`;
-} else {
-  amountText = "NPR 0.00";
-}
   return (
     <article
-      className="flex items-center gap-3 rounded-[var(--radius-lg)] p-4"
+      className="flex items-center gap-3 px-4 py-4"
       style={{
-        backgroundColor: "var(--surface)",
-        border: "1px solid var(--border)",
+        borderTop:
+          borderTop
+            ? "1px solid var(--border)"
+            : undefined,
       }}
     >
       <ActivityIcon
@@ -245,46 +350,43 @@ if (item.kind === "transfer") {
       />
 
       <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">
-              {item.title}
-            </p>
+        <p className="truncate text-sm font-semibold">
+          {item.title}
+        </p>
 
-            <p
-              className="mt-1 line-clamp-2 text-xs leading-5"
-              style={{
-                color:
-                  "var(--foreground-muted)",
-              }}
-            >
-              {item.description}
-            </p>
-          </div>
+        <p
+          className="mt-1 line-clamp-2 text-[10px] leading-4"
+          style={{
+            color:
+              "var(--foreground-muted)",
+          }}
+        >
+          {item.description}
+        </p>
+      </div>
 
-          <div className="shrink-0 text-right">
-            <p
-              className="text-sm font-semibold tabular-nums"
-              style={{
-                color: amountColor,
-              }}
-            >
-              {amountText}
-            </p>
+      <div className="shrink-0 text-right">
+        <p
+          className="text-xs font-semibold tabular-nums"
+          style={{
+            color:
+              amountColor,
+          }}
+        >
+          {amountText}
+        </p>
 
-            <p
-              className="mt-1 text-xs"
-              style={{
-                color:
-                  "var(--foreground-muted)",
-              }}
-            >
-              {formatKathmanduTime(
-                item.occurredAt
-              )}
-            </p>
-          </div>
-        </div>
+        <p
+          className="mt-1 text-[10px]"
+          style={{
+            color:
+              "var(--foreground-muted)",
+          }}
+        >
+          {formatKathmanduTime(
+            item.occurredAt
+          )}
+        </p>
       </div>
     </article>
   );
@@ -297,37 +399,58 @@ function ActivityIcon({
   kind: ActivityKind;
   amount: bigint;
 }) {
-  let icon = (
-    <ArrowLeftRight size={18} />
-  );
+  let icon =
+    <ArrowLeftRight
+      size={16}
+    />;
 
   let color =
     "var(--foreground-secondary)";
 
-  if (kind === "income") {
-    icon = <ArrowDownLeft size={18} />;
-    color = "var(--positive)";
+  if (
+    kind === "income"
+  ) {
+    icon =
+      <ArrowDownLeft
+        size={16}
+      />;
+
+    color =
+      "var(--positive)";
   }
 
-  if (kind === "expense") {
-    icon = <ArrowUpRight size={18} />;
-    color = "var(--negative)";
+  if (
+    kind === "expense"
+  ) {
+    icon =
+      <ArrowUpRight
+        size={16}
+      />;
+
+    color =
+      "var(--negative)";
   }
 
-  if (kind === "game") {
-    icon = <Gamepad2 size={18} />;
+  if (
+    kind === "game"
+  ) {
+    icon =
+      <Gamepad2
+        size={16}
+      />;
 
     color =
       amount > BigInt(0)
         ? "var(--positive)"
-        : amount < BigInt(0)
+        : amount <
+            BigInt(0)
           ? "var(--negative)"
           : "var(--foreground-secondary)";
   }
 
   return (
     <div
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)]"
       style={{
         backgroundColor:
           "var(--surface-secondary)",
@@ -344,8 +467,10 @@ function EmptyActivity() {
     <div
       className="mt-8 rounded-[var(--radius-lg)] px-5 py-12 text-center"
       style={{
-        backgroundColor: "var(--surface)",
-        border: "1px solid var(--border)",
+        backgroundColor:
+          "var(--surface)",
+        border:
+          "1px solid var(--border)",
       }}
     >
       <p className="text-sm font-semibold">
@@ -353,13 +478,15 @@ function EmptyActivity() {
       </p>
 
       <p
-        className="mt-2 text-sm"
+        className="mt-2 text-xs leading-5"
         style={{
-          color: "var(--foreground-muted)",
+          color:
+            "var(--foreground-muted)",
         }}
       >
-        Your transactions and game
-        results will appear here.
+        Your transactions and
+        game results will appear
+        here.
       </p>
     </div>
   );
@@ -368,29 +495,50 @@ function EmptyActivity() {
 function groupItemsByDate(
   items: ActivityItem[]
 ) {
-  const groups = new Map<
-    string,
-    ActivityItem[]
-  >();
+  const groups =
+    new Map<
+      string,
+      ActivityItem[]
+    >();
 
-  for (const item of items) {
+  for (
+    const item of items
+  ) {
     const dateKey =
-      kathmanduDateKey(item.occurredAt);
+      kathmanduDateKey(
+        item.occurredAt
+      );
 
     const existing =
-      groups.get(dateKey) ?? [];
+      groups.get(
+        dateKey
+      ) ?? [];
 
     existing.push(item);
-    groups.set(dateKey, existing);
+
+    groups.set(
+      dateKey,
+      existing
+    );
   }
 
-  return Array.from(groups.entries()).map(
-    ([dateKey, groupedItems]) => ({
+  return Array.from(
+    groups.entries()
+  ).map(
+    ([
       dateKey,
-      label: formatKathmanduDate(
-        groupedItems[0].occurredAt
-      ),
-      items: groupedItems,
+      groupedItems,
+    ]) => ({
+      dateKey,
+
+      label:
+        formatKathmanduDate(
+          groupedItems[0]
+            .occurredAt
+        ),
+
+      items:
+        groupedItems,
     })
   );
 }
@@ -399,24 +547,45 @@ function kathmanduDateKey(
   value: string
 ) {
   const parts =
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Kathmandu",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(new Date(value));
+    new Intl.DateTimeFormat(
+      "en-CA",
+      {
+        timeZone:
+          "Asia/Kathmandu",
 
-  const year = parts.find(
-    (part) => part.type === "year"
-  )?.value;
+        year:
+          "numeric",
 
-  const month = parts.find(
-    (part) => part.type === "month"
-  )?.value;
+        month:
+          "2-digit",
 
-  const day = parts.find(
-    (part) => part.type === "day"
-  )?.value;
+        day:
+          "2-digit",
+      }
+    ).formatToParts(
+      new Date(value)
+    );
+
+  const year =
+    parts.find(
+      (part) =>
+        part.type ===
+        "year"
+    )?.value;
+
+  const month =
+    parts.find(
+      (part) =>
+        part.type ===
+        "month"
+    )?.value;
+
+  const day =
+    parts.find(
+      (part) =>
+        part.type ===
+        "day"
+    )?.value;
 
   return `${year}-${month}-${day}`;
 }
@@ -427,12 +596,21 @@ function formatKathmanduDate(
   return new Intl.DateTimeFormat(
     "en-US",
     {
-      timeZone: "Asia/Kathmandu",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
+      timeZone:
+        "Asia/Kathmandu",
+
+      month:
+        "long",
+
+      day:
+        "numeric",
+
+      year:
+        "numeric",
     }
-  ).format(new Date(value));
+  ).format(
+    new Date(value)
+  );
 }
 
 function formatKathmanduTime(
@@ -441,17 +619,52 @@ function formatKathmanduTime(
   return new Intl.DateTimeFormat(
     "en-US",
     {
-      timeZone: "Asia/Kathmandu",
-      hour: "numeric",
-      minute: "2-digit",
+      timeZone:
+        "Asia/Kathmandu",
+
+      hour:
+        "numeric",
+
+      minute:
+        "2-digit",
     }
-  ).format(new Date(value));
+  ).format(
+    new Date(value)
+  );
 }
 
-function absoluteMoney(
+function formatActivityAmount(
+  kind: ActivityKind,
   value: bigint
 ) {
-  return value < BigInt(0)
-    ? -value
-    : value;
+  const absolute =
+    value < BigInt(0)
+      ? -value
+      : value;
+
+  if (
+    kind === "transfer"
+  ) {
+    return `NPR ${formatMoneyFromCents(
+      absolute
+    )}`;
+  }
+
+  if (
+    value > BigInt(0)
+  ) {
+    return `+NPR ${formatMoneyFromCents(
+      value
+    )}`;
+  }
+
+  if (
+    value < BigInt(0)
+  ) {
+    return `-NPR ${formatMoneyFromCents(
+      absolute
+    )}`;
+  }
+
+  return "NPR 0.00";
 }

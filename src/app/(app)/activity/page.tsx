@@ -6,7 +6,10 @@ export default async function ActivityPage() {
   const supabase = await createClient();
 
   const [
-    { data: accounts, error: accountsError },
+    {
+      data: accounts,
+      error: accountsError,
+    },
     {
       data: transactions,
       error: transactionsError,
@@ -58,7 +61,17 @@ export default async function ActivityPage() {
   ) {
     return (
       <div>
-        <h1 className="text-2xl font-semibold">
+        <p
+          className="text-[10px] font-medium uppercase tracking-[0.14em]"
+          style={{
+            color:
+              "var(--foreground-muted)",
+          }}
+        >
+          History
+        </p>
+
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
           Activity
         </h1>
 
@@ -67,7 +80,8 @@ export default async function ActivityPage() {
           style={{
             backgroundColor:
               "var(--negative-soft)",
-            color: "var(--negative)",
+            color:
+              "var(--negative)",
           }}
         >
           Could not load activity:{" "}
@@ -88,7 +102,7 @@ export default async function ActivityPage() {
   return (
     <div>
       <p
-        className="text-xs font-medium uppercase tracking-[0.12em]"
+        className="text-[10px] font-medium uppercase tracking-[0.14em]"
         style={{
           color:
             "var(--foreground-muted)",
@@ -102,14 +116,14 @@ export default async function ActivityPage() {
       </h1>
 
       <p
-        className="mt-2 text-sm"
+        className="mt-3 text-xs leading-5"
         style={{
           color:
-            "var(--foreground-secondary)",
+            "var(--foreground-muted)",
         }}
       >
-        Your complete financial and game
-        history.
+        Income, expenses, transfers,
+        and game results in one place.
       </p>
 
       <ActivityList items={items} />

@@ -1,31 +1,45 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import {
+  ArrowRight,
+  CircleDot,
+  Gamepad2,
+} from "lucide-react";
+
+import {
+  getCurrentMonthGameAnalytics,
+  kathmanduDateKey,
+  type AnalyticsGameSession,
+} from "@/lib/game-analytics";
+
 import {
   formatMoneyFromCents,
   moneyToCents,
 } from "@/lib/money";
 
-type GameSession = {
-  id: string;
-  playing_amount: string | number;
-  game_type: string;
-  note: string | null;
+import { createClient } from "@/lib/supabase/server";
 
-  status: "active" | "completed";
+type GameSession =
+  AnalyticsGameSession & {
+    playing_amount: string | number;
+    game_type: string;
+    note: string | null;
+  };
 
-  result_type: "win" | "loss" | "even" | null;
-  result_amount: string | number | null;
-
-  started_at: string;
-  ended_at: string | null;
+type SessionGroup = {
+  dateKey: string;
+  label: string;
+  sessions: GameSession[];
 };
 
 export default async function SessionsPage() {
-  const supabase = await createClient();
+  const supabase =
+    await createClient();
 
-  const { data, error } = await supabase
+  const {
+    data: sessions,
+    error,
+  } = await supabase
     .from("game_sessions")
     .select(`
       id,
@@ -45,112 +59,289 @@ export default async function SessionsPage() {
   if (error) {
     return (
       <div>
-        <h1 className="text-2xl font-semibold">
+        <p
+          className="text-[10px] font-medium uppercase tracking-[0.15em]"
+          style={{
+            color:
+              "var(--foreground-muted)",
+          }}
+        >
+          Game tracking
+        </p>
+
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
           Sessions
         </h1>
 
         <div
           className="mt-6 rounded-[var(--radius-md)] p-4 text-sm"
           style={{
-            backgroundColor: "var(--negative-soft)",
-            color: "var(--negative)",
+            backgroundColor:
+              "var(--negative-soft)",
+            color:
+              "var(--negative)",
           }}
         >
-          Could not load sessions: {error.message}
+          Could not load sessions:{" "}
+          {error.message}
         </div>
       </div>
     );
   }
 
-  const sessions = (data ?? []) as GameSession[];
+  const typedSessions =
+    (sessions ?? []) as GameSession[];
 
   const activeSession =
-    sessions.find(
-      (session) => session.status === "active"
-    ) ?? null;
+    typedSessions.find(
+      (session) =>
+        session.status === "active"
+    );
 
-  const completedSessions = sessions.filter(
-    (session) => session.status === "completed"
-  );
+  const completedSessions =
+    typedSessions.filter(
+      (session) =>
+        session.status === "completed"
+    );
+
+  const thisMonth =
+    getCurrentMonthGameAnalytics(
+      typedSessions
+    );
+
+  const historyGroups =
+    groupSessionsByDate(
+      completedSessions
+    );
 
   return (
-    <div>
-      <p
-        className="text-xs font-medium uppercase tracking-[0.12em]"
-        style={{
-          color: "var(--foreground-muted)",
-        }}
-      >
-        Game
-      </p>
+    <div className="pb-24">
+      {/* Header */}
+      <section>
+        <p
+          className="text-[10px] font-medium uppercase tracking-[0.15em]"
+          style={{
+            color:
+              "var(--foreground-muted)",
+          }}
+        >
+          Game tracking
+        </p>
 
-      <div className="mt-1 flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
           Sessions
         </h1>
 
-        {!activeSession && (
-          <Link
-            href="/sessions/new"
-            className="flex h-9 items-center gap-2 rounded-[var(--radius-md)] px-3 text-sm font-medium"
+        <p
+          className="mt-3 text-xs leading-5"
+          style={{
+            color:
+              "var(--foreground-muted)",
+          }}
+        >
+          Track each playing day
+          from start to final result.
+        </p>
+      </section>
+
+      {/* This month */}
+      <section className="mt-8">
+        <SectionLabel>
+          This month
+        </SectionLabel>
+
+        <div
+          className="mt-4 rounded-[var(--radius-lg)] p-5"
+          style={{
+            backgroundColor:
+              "var(--surface)",
+            border:
+              "1px solid var(--border)",
+          }}
+        >
+          <p
+            className="text-[9px] font-medium uppercase tracking-[0.14em]"
             style={{
-              backgroundColor: "var(--primary)",
-              color: "var(--primary-foreground)",
+              color:
+                "var(--foreground-muted)",
             }}
           >
-            <Plus size={16} />
-            Start
-          </Link>
+            Monthly overview
+          </p>
+
+          <div className="mt-5 grid grid-cols-3 gap-4">
+            <SummaryMetric
+              label="P&L"
+              value={
+                <SignedMoney
+                  value={
+                    thisMonth.totalPnL
+                  }
+                />
+              }
+            />
+
+            <SummaryMetric
+              label="Sessions"
+              value={String(
+                thisMonth.totalSessions
+              )}
+            />
+
+            <SummaryMetric
+              label="Win rate"
+              value={`${thisMonth.winRate}%`}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Active Session */}
+      <section className="mt-8">
+        <SectionLabel>
+          Active session
+        </SectionLabel>
+
+        {activeSession ? (
+          <ActiveSessionCard
+            session={
+              activeSession
+            }
+          />
+        ) : (
+          <EmptyActiveSession />
         )}
-      </div>
+      </section>
 
-      <p
-        className="mt-2 text-sm"
-        style={{
-          color: "var(--foreground-secondary)",
-        }}
-      >
-        Track your daily game results and P&amp;L.
-      </p>
-
-      {activeSession && (
-        <ActiveSessionCard session={activeSession} />
-      )}
-
-      <section className="mt-10">
+      {/* History */}
+      <section className="mt-9">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">
+          <SectionLabel>
             Session history
-          </h2>
+          </SectionLabel>
 
-          <p
-            className="text-xs"
+          <span
+            className="text-[10px]"
             style={{
-              color: "var(--foreground-muted)",
+              color:
+                "var(--foreground-muted)",
             }}
           >
             {completedSessions.length}{" "}
-            {completedSessions.length === 1
+            {completedSessions.length ===
+            1
               ? "session"
               : "sessions"}
-          </p>
+          </span>
         </div>
 
-        {completedSessions.length === 0 ? (
-          <EmptyHistory
-            hasActiveSession={Boolean(activeSession)}
-          />
+        {completedSessions.length ===
+        0 ? (
+          <div
+            className="mt-4 rounded-[var(--radius-lg)] px-5 py-10 text-center"
+            style={{
+              backgroundColor:
+                "var(--surface)",
+              border:
+                "1px solid var(--border)",
+            }}
+          >
+            <p
+              className="text-xs"
+              style={{
+                color:
+                  "var(--foreground-muted)",
+              }}
+            >
+              No completed sessions yet.
+            </p>
+          </div>
         ) : (
-          <div className="mt-4 space-y-3">
-            {completedSessions.map((session) => (
-              <CompletedSessionCard
-                key={session.id}
-                session={session}
-              />
-            ))}
+          <div className="mt-5 space-y-7">
+            {historyGroups.map(
+              (group) => (
+                <SessionHistoryGroup
+                  key={
+                    group.dateKey
+                  }
+                  group={
+                    group
+                  }
+                />
+              )
+            )}
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function EmptyActiveSession() {
+  return (
+    <div
+      className="mt-4 rounded-[var(--radius-lg)] p-5"
+      style={{
+        backgroundColor:
+          "var(--surface)",
+        border:
+          "1px solid var(--border)",
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+          style={{
+            backgroundColor:
+              "var(--surface-secondary)",
+            color:
+              "var(--foreground-muted)",
+          }}
+        >
+          <CircleDot
+            size={16}
+          />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">
+            No active session
+          </p>
+
+          <p
+            className="mt-1 text-xs leading-5"
+            style={{
+              color:
+                "var(--foreground-muted)",
+            }}
+          >
+            Ready when you start
+            playing again.
+          </p>
+        </div>
+      </div>
+
+      <div
+        className="mt-5 border-t pt-4"
+        style={{
+          borderColor:
+            "var(--border)",
+        }}
+      >
+        <Link
+          href="/sessions/new"
+          className="flex items-center justify-end gap-2 text-sm font-semibold"
+          style={{
+            color:
+              "var(--primary)",
+          }}
+        >
+          Start Session
+          <ArrowRight
+            size={15}
+          />
+        </Link>
+      </div>
     </div>
   );
 }
@@ -161,350 +352,500 @@ function ActiveSessionCard({
   session: GameSession;
 }) {
   return (
-    <section
-      className="mt-8 rounded-[var(--radius-lg)] p-5"
+    <div
+      className="mt-4 overflow-hidden rounded-[var(--radius-lg)]"
       style={{
-        backgroundColor: "var(--surface-elevated)",
-        border: "1px solid var(--border)",
+        backgroundColor:
+          "var(--surface)",
+        border:
+          "1px solid var(--border)",
       }}
     >
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p
-            className="text-xs font-medium uppercase tracking-[0.12em]"
+      <div className="p-5">
+        <div className="flex items-center gap-2">
+          <span
+            className="h-2 w-2 rounded-full"
             style={{
-              color: "var(--positive)",
+              backgroundColor:
+                "var(--positive)",
+            }}
+          />
+
+          <span
+            className="text-[9px] font-semibold uppercase tracking-[0.14em]"
+            style={{
+              color:
+                "var(--positive)",
             }}
           >
-            Active Session
-          </p>
-
-          <h2 className="mt-2 text-lg font-semibold">
-            {session.game_type}
-          </h2>
+            Active
+          </span>
         </div>
 
-        <span
-          className="rounded-full px-3 py-1 text-xs font-medium"
-          style={{
-            backgroundColor: "var(--positive-soft)",
-            color: "var(--positive)",
-          }}
-        >
-          Active
-        </span>
-      </div>
+        <div className="mt-4 flex items-start justify-between gap-5">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Gamepad2
+                size={16}
+                style={{
+                  color:
+                    "var(--foreground-muted)",
+                }}
+              />
 
-      <div
-        className="mt-5 border-t pt-5"
-        style={{
-          borderColor: "var(--border)",
-        }}
-      >
-        <p
-          className="text-xs"
-          style={{
-            color: "var(--foreground-muted)",
-          }}
-        >
-          Playing amount
-        </p>
+              <h2 className="truncate text-base font-semibold">
+                {
+                  session.game_type
+                }
+              </h2>
+            </div>
 
-        <p className="mt-1 text-2xl font-semibold tabular-nums">
-          NPR{" "}
-          {formatMoneyFromCents(
-            moneyToCents(session.playing_amount)
-          )}
-        </p>
-      </div>
+            <p
+              className="mt-2 text-[10px]"
+              style={{
+                color:
+                  "var(--foreground-muted)",
+              }}
+            >
+              Started{" "}
+              {formatSessionDateTime(
+                session.started_at
+              )}
+            </p>
+          </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-4">
-        <div>
-          <p
-            className="text-xs"
-            style={{
-              color: "var(--foreground-muted)",
-            }}
-          >
-            Started
-          </p>
+          <div className="shrink-0 text-right">
+            <p
+              className="text-[9px] uppercase tracking-[0.12em]"
+              style={{
+                color:
+                  "var(--foreground-muted)",
+              }}
+            >
+              Playing
+            </p>
 
-          <p className="mt-1 text-sm font-medium">
-            {formatKathmanduTime(session.started_at)}
-          </p>
+            <p className="mt-2 text-sm font-semibold tabular-nums">
+              NPR{" "}
+              {formatMoneyFromCents(
+                moneyToCents(
+                  session.playing_amount
+                )
+              )}
+            </p>
+          </div>
         </div>
 
-        <div>
+        {session.note && (
           <p
-            className="text-xs"
+            className="mt-4 text-[10px] leading-4"
             style={{
-              color: "var(--foreground-muted)",
+              color:
+                "var(--foreground-muted)",
             }}
           >
-            Date
-          </p>
-
-          <p className="mt-1 text-sm font-medium">
-            {formatKathmanduDate(session.started_at)}
-          </p>
-        </div>
-      </div>
-
-      {session.note && (
-        <div
-          className="mt-5 border-t pt-4"
-          style={{
-            borderColor: "var(--border)",
-          }}
-        >
-          <p
-            className="text-xs"
-            style={{
-              color: "var(--foreground-muted)",
-            }}
-          >
-            Note
-          </p>
-
-          <p className="mt-1 text-sm leading-6">
             {session.note}
           </p>
-        </div>
-      )}
+        )}
+      </div>
 
       <Link
         href={`/sessions/${session.id}/finish`}
-        className="mt-6 flex h-12 w-full items-center justify-center rounded-[var(--radius-md)] text-sm font-semibold"
+        className="flex h-12 items-center justify-end gap-2 border-t px-5 text-sm font-semibold"
         style={{
-          backgroundColor: "var(--primary)",
-          color: "var(--primary-foreground)",
+          borderColor:
+            "var(--border)",
+          color:
+            "var(--primary)",
         }}
       >
-        End Session
+        Finish Session
+        <ArrowRight
+          size={15}
+        />
       </Link>
-    </section>
+    </div>
   );
 }
 
-function CompletedSessionCard({
+function SessionHistoryGroup({
+  group,
+}: {
+  group: SessionGroup;
+}) {
+  return (
+    <div>
+      <p
+        className="mb-3 text-[9px] font-medium uppercase tracking-[0.14em]"
+        style={{
+          color:
+            "var(--foreground-muted)",
+        }}
+      >
+        {group.label}
+      </p>
+
+      <div
+        className="overflow-hidden rounded-[var(--radius-lg)]"
+        style={{
+          backgroundColor:
+            "var(--surface)",
+          border:
+            "1px solid var(--border)",
+        }}
+      >
+        {group.sessions.map(
+          (
+            session,
+            index
+          ) => (
+            <SessionHistoryRow
+              key={
+                session.id
+              }
+              session={
+                session
+              }
+              borderTop={
+                index > 0
+              }
+            />
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SessionHistoryRow({
   session,
+  borderTop = false,
 }: {
   session: GameSession;
+  borderTop?: boolean;
 }) {
-  const pnl = getSessionPnL(session);
-
-  const pnlColor =
-    pnl > BigInt(0)
-      ? "var(--positive)"
-      : pnl < BigInt(0)
-        ? "var(--negative)"
-        : "var(--foreground)";
-
-  const resultLabel =
-    session.result_type === "win"
-      ? "Win"
-      : session.result_type === "loss"
-        ? "Loss"
-        : "Even";
+  const pnl =
+    getSessionPnL(
+      session
+    );
 
   return (
-    <article
-      className="rounded-[var(--radius-lg)] p-4"
+    <div
+      className="px-4 py-4"
       style={{
-        backgroundColor: "var(--surface)",
-        border: "1px solid var(--border)",
+        borderTop:
+          borderTop
+            ? "1px solid var(--border)"
+            : undefined,
       }}
     >
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">
-            {session.game_type}
+            {
+              session.game_type
+            }
           </p>
 
           <p
-            className="mt-1 text-xs"
+            className="mt-1 text-[10px]"
             style={{
-              color: "var(--foreground-muted)",
+              color:
+                "var(--foreground-muted)",
             }}
           >
-            {formatKathmanduDate(session.started_at)}
-          </p>
-        </div>
-
-        <div className="shrink-0 text-right">
-          <p
-            className="text-sm font-semibold tabular-nums"
-            style={{
-              color: pnlColor,
-            }}
-          >
-            {pnl > BigInt(0) ? "+" : ""}
-            NPR {formatMoneyFromCents(pnl)}
-          </p>
-
-          <p
-            className="mt-1 text-xs"
-            style={{
-              color: pnlColor,
-            }}
-          >
-            {resultLabel}
-          </p>
-        </div>
-      </div>
-
-      <div
-        className="mt-4 grid grid-cols-2 gap-4 border-t pt-4"
-        style={{
-          borderColor: "var(--border)",
-        }}
-      >
-        <div>
-          <p
-            className="text-xs"
-            style={{
-              color: "var(--foreground-muted)",
-            }}
-          >
-            Playing amount
-          </p>
-
-          <p className="mt-1 text-sm font-medium tabular-nums">
-            NPR{" "}
+            Played NPR{" "}
             {formatMoneyFromCents(
-              moneyToCents(session.playing_amount)
+              moneyToCents(
+                session.playing_amount
+              )
             )}
           </p>
         </div>
 
-        <div>
-          <p
-            className="text-xs"
-            style={{
-              color: "var(--foreground-muted)",
-            }}
-          >
-            Result
-          </p>
+        <div className="shrink-0 text-right">
+          <SignedMoney
+            value={pnl}
+          />
 
-          <p className="mt-1 text-sm font-medium tabular-nums">
-            {session.result_type === "even"
-              ? "NPR 0.00"
-              : `NPR ${formatMoneyFromCents(
-                  moneyToCents(
-                    session.result_amount ?? 0
-                  )
-                )}`}
-          </p>
+          <div className="mt-2 flex justify-end">
+            <ResultBadge
+              result={
+                session.result_type
+              }
+            />
+          </div>
         </div>
       </div>
 
       {session.note && (
-        <div
-          className="mt-4 border-t pt-4"
-          style={{
-            borderColor: "var(--border)",
-          }}
-        >
-          <p
-            className="text-xs"
-            style={{
-              color: "var(--foreground-muted)",
-            }}
-          >
-            Note
-          </p>
-
-          <p className="mt-1 text-sm leading-6">
-            {session.note}
-          </p>
-        </div>
-      )}
-
-      {session.ended_at && (
         <p
-          className="mt-4 text-xs"
+          className="mt-3 text-[10px]"
           style={{
-            color: "var(--foreground-muted)",
+            color:
+              "var(--foreground-muted)",
           }}
         >
-          {formatKathmanduTime(session.started_at)}
-          {" → "}
-          {formatKathmanduTime(session.ended_at)}
+          {session.note}
         </p>
       )}
-    </article>
+    </div>
   );
 }
 
-function EmptyHistory({
-  hasActiveSession,
+function ResultBadge({
+  result,
 }: {
-  hasActiveSession: boolean;
+  result:
+    | "win"
+    | "loss"
+    | "even"
+    | null;
 }) {
+  if (!result) {
+    return null;
+  }
+
+  const background =
+    result === "win"
+      ? "var(--positive-soft)"
+      : result === "loss"
+        ? "var(--negative-soft)"
+        : "var(--surface-secondary)";
+
+  const color =
+    result === "win"
+      ? "var(--positive)"
+      : result === "loss"
+        ? "var(--negative)"
+        : "var(--foreground-muted)";
+
   return (
-    <div
-      className="mt-4 rounded-[var(--radius-lg)] px-5 py-10 text-center"
+    <span
+      className="rounded-full px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.08em]"
       style={{
-        backgroundColor: "var(--surface)",
-        border: "1px solid var(--border)",
+        backgroundColor:
+          background,
+        color,
       }}
     >
-      <p className="text-sm font-semibold">
-        No completed sessions yet
-      </p>
+      {result}
+    </span>
+  );
+}
+
+function SummaryMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="text-sm font-semibold">
+        {value}
+      </div>
 
       <p
-        className="mt-2 text-sm"
+        className="mt-2 text-[8px] uppercase tracking-[0.1em]"
         style={{
-          color: "var(--foreground-muted)",
+          color:
+            "var(--foreground-muted)",
         }}
       >
-        {hasActiveSession
-          ? "Finish your active session and it will appear here."
-          : "Your finished game days will appear here."}
+        {label}
       </p>
     </div>
   );
 }
 
-function getSessionPnL(session: GameSession) {
+function SectionLabel({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <h2
+      className="text-[10px] font-medium uppercase tracking-[0.15em]"
+      style={{
+        color:
+          "var(--foreground-muted)",
+      }}
+    >
+      {children}
+    </h2>
+  );
+}
+
+function SignedMoney({
+  value,
+}: {
+  value: bigint;
+}) {
+  const positive =
+    value > BigInt(0);
+
+  const negative =
+    value < BigInt(0);
+
+  const absolute =
+    negative
+      ? -value
+      : value;
+
+  const prefix =
+    positive
+      ? "+"
+      : negative
+        ? "-"
+        : "";
+
+  const color =
+    positive
+      ? "var(--positive)"
+      : negative
+        ? "var(--negative)"
+        : "var(--foreground)";
+
+  return (
+    <span
+      className="text-sm font-semibold tabular-nums"
+      style={{
+        color,
+      }}
+    >
+      {prefix}NPR{" "}
+      {formatMoneyFromCents(
+        absolute
+      )}
+    </span>
+  );
+}
+
+function getSessionPnL(
+  session: GameSession
+) {
   if (
-    session.status !== "completed" ||
-    session.result_type === null ||
-    session.result_amount === null
+    session.status !==
+      "completed" ||
+    session.result_type ===
+      null ||
+    session.result_amount ===
+      null
   ) {
     return BigInt(0);
   }
 
-  const amount = moneyToCents(
-    session.result_amount
-  );
+  const amount =
+    moneyToCents(
+      session.result_amount
+    );
 
-  if (session.result_type === "win") {
+  if (
+    session.result_type ===
+    "win"
+  ) {
     return amount;
   }
 
-  if (session.result_type === "loss") {
+  if (
+    session.result_type ===
+    "loss"
+  ) {
     return -amount;
   }
 
   return BigInt(0);
 }
 
-function formatKathmanduTime(value: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Kathmandu",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
+function groupSessionsByDate(
+  sessions: GameSession[]
+) {
+  const groups =
+    new Map<
+      string,
+      GameSession[]
+    >();
+
+  for (
+    const session of sessions
+  ) {
+    const dateKey =
+      kathmanduDateKey(
+        session.started_at
+      );
+
+    const existing =
+      groups.get(
+        dateKey
+      ) ?? [];
+
+    existing.push(
+      session
+    );
+
+    groups.set(
+      dateKey,
+      existing
+    );
+  }
+
+  return Array.from(
+    groups.entries()
+  ).map(
+    ([
+      dateKey,
+      groupedSessions,
+    ]) => ({
+      dateKey,
+
+      label:
+        formatSessionGroupDate(
+          groupedSessions[0]
+            .started_at
+        ),
+
+      sessions:
+        groupedSessions,
+    })
+  );
 }
 
-function formatKathmanduDate(value: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Kathmandu",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
+function formatSessionGroupDate(
+  value: string
+) {
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      timeZone:
+        "Asia/Kathmandu",
+
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }
+  ).format(
+    new Date(value)
+  );
+}
+
+function formatSessionDateTime(
+  value: string
+) {
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      timeZone:
+        "Asia/Kathmandu",
+
+      month: "short",
+      day: "numeric",
+
+      hour: "numeric",
+      minute: "2-digit",
+    }
+  ).format(
+    new Date(value)
+  );
 }

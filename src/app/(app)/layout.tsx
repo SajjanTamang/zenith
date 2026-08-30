@@ -11,7 +11,8 @@ export default async function AppLayout({
 }>) {
   const supabase = await createClient();
 
-  const { data } = await supabase.auth.getClaims();
+  const { data } =
+    await supabase.auth.getClaims();
 
   if (!data?.claims) {
     redirect("/");
@@ -21,13 +22,24 @@ export default async function AppLayout({
     <div
       className="min-h-screen"
       style={{
-        backgroundColor: "var(--background)",
-        color: "var(--foreground)",
+        backgroundColor:
+          "var(--background)",
+        color:
+          "var(--foreground)",
       }}
     >
       <AppHeader />
 
-      <main className="mx-auto min-h-[calc(100vh-56px)] max-w-md px-4 pb-24 pt-6">
+      <main
+        className="
+          mx-auto
+          min-h-[calc(100vh-56px)]
+          max-w-md
+          px-4
+          pt-6
+          pb-[calc(9rem+env(safe-area-inset-bottom))]
+        "
+      >
         {children}
       </main>
 

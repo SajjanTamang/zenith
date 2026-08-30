@@ -1,10 +1,20 @@
 import Link from "next/link";
 
-import { createClient } from "@/lib/supabase/server";
 import {
-  formatMoneyFromCents,
-  moneyToCents,
-} from "@/lib/money";
+  ArrowDownLeft,
+  ArrowLeftRight,
+  ArrowUpRight,
+  Gamepad2,
+} from "lucide-react";
+
+import { PnLCalendar } from "@/components/insights/pnl-calendar";
+
+import {
+  buildActivityItems,
+  type ActivityItem,
+  type ActivityKind,
+} from "@/lib/activity";
+
 import {
   calculateAccountBalances,
   isInCurrentKathmanduMonth,
@@ -17,43 +27,57 @@ import {
   type FinanceTransaction,
 } from "@/lib/finance";
 
+import {
+  getCurrentMonthGameAnalytics,
+  type AnalyticsGameSession,
+} from "@/lib/game-analytics";
+
+import {
+  formatMoneyFromCents,
+} from "@/lib/money";
+
+import { createClient } from "@/lib/supabase/server";
+
 type DashboardAccount = FinanceAccount & {
   name: string;
 };
 
-type DashboardTransaction = FinanceTransaction & {
-  id: string;
-  category: string | null;
-  note: string | null;
-  occurred_at: string;
-};
+type DashboardTransaction =
+  FinanceTransaction & {
+    id: string;
+    category: string | null;
+    note: string | null;
+    occurred_at: string;
+  };
 
-type DashboardGameSession = FinanceGameSession & {
-  id: string;
-  game_type: string;
-  ended_at: string | null;
-};
-
-type RecentActivityItem = {
-  id: string;
-  title: string;
-  description: string;
-  amount: bigint;
-  kind:
-    | "income"
-    | "expense"
-    | "transfer"
-    | "game";
-  occurredAt: string;
-};
+type DashboardGameSession =
+  FinanceGameSession &
+    AnalyticsGameSession & {
+      id: string;
+      playing_amount: string | number;
+      game_type: string;
+      note: string | null;
+      started_at: string;
+      ended_at: string | null;
+    };
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
+  const supabase =
+    await createClient();
 
   const [
-    { data: accounts, error: accountsError },
-    { data: transactions, error: transactionsError },
-    { data: gameSessions, error: gameSessionsError },
+    {
+      data: accounts,
+      error: accountsError,
+    },
+    {
+      data: transactions,
+      error: transactionsError,
+    },
+    {
+      data: gameSessions,
+      error: gameSessionsError,
+    },
   ] = await Promise.all([
     supabase
       .from("accounts")
@@ -82,7 +106,9 @@ export default async function DashboardPage() {
       .select(`
         id,
         bankroll_account_id,
+        playing_amount,
         game_type,
+        note,
         status,
         result_type,
         result_amount,
@@ -98,15 +124,27 @@ export default async function DashboardPage() {
   ) {
     return (
       <div>
-        <h1 className="text-2xl font-semibold">
+        <p
+          className="text-[10px] font-medium uppercase tracking-[0.14em]"
+          style={{
+            color:
+              "var(--foreground-muted)",
+          }}
+        >
+          Overview
+        </p>
+
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
           Dashboard
         </h1>
 
         <div
           className="mt-6 rounded-[var(--radius-md)] p-4 text-sm"
           style={{
-            backgroundColor: "var(--negative-soft)",
-            color: "var(--negative)",
+            backgroundColor:
+              "var(--negative-soft)",
+            color:
+              "var(--negative)",
           }}
         >
           Could not load dashboard:{" "}
@@ -122,11 +160,22 @@ export default async function DashboardPage() {
     (accounts ?? []) as DashboardAccount[];
 
   const typedTransactions =
-    (transactions ?? []) as DashboardTransaction[];
+    (transactions ??
+      []) as DashboardTransaction[];
 
   const typedGameSessions =
-    (gameSessions ?? []) as DashboardGameSession[];
+    (gameSessions ??
+      []) as DashboardGameSession[];
 
+  /*
+    Current account balances:
+
+    Opening balances
+    + Income
+    - Expenses
+    +/- Transfers
+    +/- Completed Game P&L
+  */
   const accountBalances =
     calculateAccountBalances(
       typedAccounts,
@@ -135,8 +184,14 @@ export default async function DashboardPage() {
     );
 
   const totalBalance =
-    totalBalanceFromAccounts(accountBalances);
+    totalBalanceFromAccounts(
+      accountBalances
+    );
 
+  /*
+    Current Kathmandu-month
+    regular income.
+  */
   const monthlyIncome =
     totalTransactionsByType(
       typedTransactions,
@@ -150,6 +205,10 @@ export default async function DashboardPage() {
         )
     );
 
+  /*
+    Current Kathmandu-month
+    regular expenses.
+  */
   const monthlyExpenses =
     totalTransactionsByType(
       typedTransactions,
@@ -163,9 +222,19 @@ export default async function DashboardPage() {
         )
     );
 
-  const gamePnL =
-    totalGamePnL(typedGameSessions);
+  /*
+    Lifetime game P&L.
+    This remains separate from
+    regular income and expenses.
+  */
+  const lifetimeGamePnL =
+    totalGamePnL(
+      typedGameSessions
+    );
 
+  /*
+    Current Game Bankroll balance.
+  */
   const bankroll =
     totalAccountTypeBalance(
       typedAccounts,
@@ -173,151 +242,233 @@ export default async function DashboardPage() {
       "game_bankroll"
     );
 
-  const recentActivity = buildRecentActivity(
-    typedAccounts,
-    typedTransactions,
-    typedGameSessions
-  ).slice(0, 5);
+  /*
+    Current Kathmandu-month
+    game analytics.
+  */
+  const thisMonthGame =
+    getCurrentMonthGameAnalytics(
+      typedGameSessions
+    );
+
+  /*
+    Monthly net movement:
+
+    Income
+    - Expenses
+    + Game P&L
+
+    Transfers are excluded because
+    they do not change total wealth.
+  */
+  const monthlyNetMovement =
+    monthlyIncome -
+    monthlyExpenses +
+    thisMonthGame.totalPnL;
+
+  /*
+    Unified financial + game activity.
+  */
+  const recentActivity =
+    buildActivityItems(
+      typedAccounts,
+      typedTransactions,
+      typedGameSessions
+    ).slice(0, 5);
 
   return (
     <div>
-      <div>
+      {/* Balance */}
+      <section>
         <p
-          className="text-xs font-medium uppercase tracking-[0.12em]"
+          className="text-[10px] font-medium uppercase tracking-[0.16em]"
           style={{
-            color: "var(--foreground-muted)",
+            color:
+              "var(--foreground-muted)",
           }}
         >
-          Overview
+          Total balance
         </p>
 
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          Dashboard
-        </h1>
-      </div>
-
-      <section
-        className="mt-8 rounded-[var(--radius-lg)] p-5"
-        style={{
-          backgroundColor: "var(--surface-elevated)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p
-              className="text-xs font-medium uppercase tracking-[0.12em]"
-              style={{
-                color: "var(--foreground-muted)",
-              }}
-            >
-              Total balance
-            </p>
-
-            <p className="mt-3 text-3xl font-semibold tracking-tight tabular-nums">
-              <span
-                className="mr-2 text-base font-medium"
-                style={{
-                  color: "var(--foreground-muted)",
-                }}
-              >
-                NPR
-              </span>
-
-              {formatMoneyFromCents(totalBalance)}
-            </p>
-          </div>
-
-          <Link
-            href="/accounts"
-            className="text-xs font-medium"
+        <div className="mt-3 flex items-baseline gap-2">
+          <span
+            className="text-sm font-medium"
             style={{
-              color: "var(--foreground-secondary)",
+              color:
+                "var(--foreground-muted)",
             }}
           >
-            Accounts
-          </Link>
+            NPR
+          </span>
+
+          <p className="text-[36px] font-semibold leading-none tracking-[-0.045em] tabular-nums">
+            {formatMoneyFromCents(
+              totalBalance
+            )}
+          </p>
+        </div>
+
+        <div className="mt-3 flex items-center gap-2">
+          <SignedMoney
+            value={
+              monthlyNetMovement
+            }
+            small
+          />
+
+          <span
+            className="text-[10px]"
+            style={{
+              color:
+                "var(--foreground-muted)",
+            }}
+          >
+            this month
+          </span>
         </div>
       </section>
 
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        <SummaryCard
-          label="Income"
-          value={monthlyIncome}
-          tone="positive"
-          subtitle="This month"
-        />
+      {/* Metrics */}
+      <section
+        className="mt-8 border-t pt-6"
+        style={{
+          borderColor:
+            "var(--border)",
+        }}
+      >
+        <div className="grid grid-cols-2 gap-x-8 gap-y-7">
+          <DashboardMetric
+            label="Income"
+            value={
+              monthlyIncome
+            }
+            tone="positive"
+          />
 
-        <SummaryCard
-          label="Expenses"
-          value={monthlyExpenses}
-          tone="negative"
-          subtitle="This month"
-        />
+          <DashboardMetric
+            label="Expenses"
+            value={
+              monthlyExpenses
+            }
+            tone="negative"
+          />
 
-        <SummaryCard
-          label="Game P&L"
-          value={gamePnL}
-          tone={
-            gamePnL > BigInt(0)
-              ? "positive"
-              : gamePnL < BigInt(0)
-                ? "negative"
-                : undefined
+          <DashboardMetric
+            label="Game P&L"
+            value={
+              lifetimeGamePnL
+            }
+            signed
+          />
+
+          <DashboardMetric
+            label="Bankroll"
+            value={bankroll}
+          />
+        </div>
+      </section>
+
+      {/* Calendar */}
+      <section
+        className="mt-8 border-t pt-7"
+        style={{
+          borderColor:
+            "var(--border)",
+        }}
+      >
+        <PnLCalendar
+          dailyResults={
+            thisMonthGame.dailyResults
           }
-          showSign
-          subtitle="Sessions"
         />
+      </section>
 
-        <SummaryCard
-          label="Bankroll"
-          value={bankroll}
-          subtitle="Current balance"
-        />
-      </div>
-
-      <section className="mt-10">
+      {/* Recent activity */}
+      <section
+        className="mt-8 border-t pt-7"
+        style={{
+          borderColor:
+            "var(--border)",
+        }}
+      >
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">
-            Recent activity
-          </h2>
+          <div>
+            <p
+              className="text-[10px] font-medium uppercase tracking-[0.14em]"
+              style={{
+                color:
+                  "var(--foreground-muted)",
+              }}
+            >
+              History
+            </p>
+
+            <h2 className="mt-1 text-sm font-semibold">
+              Recent Activity
+            </h2>
+          </div>
 
           <Link
             href="/activity"
-            className="text-xs font-medium"
+            className="text-[11px] font-medium"
             style={{
-              color: "var(--foreground-muted)",
+              color:
+                "var(--foreground-muted)",
             }}
           >
             View all
           </Link>
         </div>
 
-        {recentActivity.length === 0 ? (
+        {recentActivity.length ===
+        0 ? (
           <div
-            className="mt-3 rounded-[var(--radius-lg)] px-5 py-10 text-center"
+            className="mt-4 rounded-[var(--radius-lg)] px-5 py-10 text-center"
             style={{
-              backgroundColor: "var(--surface)",
-              border: "1px solid var(--border)",
+              backgroundColor:
+                "var(--surface)",
+              border:
+                "1px solid var(--border)",
             }}
           >
             <p
               className="text-sm"
               style={{
-                color: "var(--foreground-muted)",
+                color:
+                  "var(--foreground-muted)",
               }}
             >
               No activity yet.
             </p>
           </div>
         ) : (
-          <div className="mt-3 space-y-2">
-            {recentActivity.map((item) => (
-              <RecentActivityRow
-                key={item.id}
-                item={item}
-              />
-            ))}
+          <div
+            className="mt-4 overflow-hidden rounded-[var(--radius-lg)]"
+            style={{
+              backgroundColor:
+                "var(--surface)",
+              border:
+                "1px solid var(--border)",
+            }}
+          >
+            {recentActivity.map(
+              (
+                item,
+                index
+              ) => (
+                <RecentActivityRow
+                  key={
+                    item.id
+                  }
+                  item={
+                    item
+                  }
+                  borderTop={
+                    index > 0
+                  }
+                />
+              )
+            )}
           </div>
         )}
       </section>
@@ -325,280 +476,347 @@ export default async function DashboardPage() {
   );
 }
 
-function SummaryCard({
+function DashboardMetric({
   label,
   value,
-  subtitle,
   tone,
-  showSign = false,
+  signed = false,
 }: {
   label: string;
   value: bigint;
-  subtitle: string;
-  tone?: "positive" | "negative";
-  showSign?: boolean;
+  tone?:
+    | "positive"
+    | "negative";
+  signed?: boolean;
 }) {
-  const valueColor =
+  let color =
+    "var(--foreground)";
+
+  if (
     tone === "positive"
-      ? "var(--positive)"
-      : tone === "negative"
-        ? "var(--negative)"
-        : "var(--foreground)";
+  ) {
+    color =
+      "var(--positive)";
+  }
+
+  if (
+    tone === "negative"
+  ) {
+    color =
+      "var(--negative)";
+  }
+
+  if (signed) {
+    if (
+      value > BigInt(0)
+    ) {
+      color =
+        "var(--positive)";
+    }
+
+    if (
+      value < BigInt(0)
+    ) {
+      color =
+        "var(--negative)";
+    }
+  }
+
+  const absolute =
+    value < BigInt(0)
+      ? -value
+      : value;
 
   const prefix =
-    showSign && value > BigInt(0)
+    signed &&
+    value > BigInt(0)
       ? "+"
-      : "";
+      : signed &&
+          value < BigInt(0)
+        ? "-"
+        : "";
 
   return (
-    <div
-      className="rounded-[var(--radius-lg)] p-4"
-      style={{
-        backgroundColor: "var(--surface)",
-        border: "1px solid var(--border)",
-      }}
-    >
+    <div>
       <p
-        className="text-xs font-medium"
+        className="text-[9px] font-medium uppercase tracking-[0.14em]"
         style={{
-          color: "var(--foreground-muted)",
+          color:
+            "var(--foreground-muted)",
         }}
       >
         {label}
       </p>
 
       <p
-        className="mt-3 text-lg font-semibold tabular-nums"
+        className="mt-2 text-sm font-semibold tabular-nums"
         style={{
-          color: valueColor,
+          color,
         }}
       >
-        {prefix}NPR {formatMoneyFromCents(value)}
-      </p>
-
-      <p
-        className="mt-1 text-xs"
-        style={{
-          color: "var(--foreground-muted)",
-        }}
-      >
-        {subtitle}
+        {prefix}NPR{" "}
+        {formatMoneyFromCents(
+          absolute
+        )}
       </p>
     </div>
+  );
+}
+
+function SignedMoney({
+  value,
+  small = false,
+}: {
+  value: bigint;
+  small?: boolean;
+}) {
+  const positive =
+    value > BigInt(0);
+
+  const negative =
+    value < BigInt(0);
+
+  const absolute =
+    negative
+      ? -value
+      : value;
+
+  const prefix =
+    positive
+      ? "+"
+      : negative
+        ? "-"
+        : "";
+
+  const color =
+    positive
+      ? "var(--positive)"
+      : negative
+        ? "var(--negative)"
+        : "var(--foreground-muted)";
+
+  return (
+    <span
+      className={
+        small
+          ? "text-[11px] font-semibold tabular-nums"
+          : "font-semibold tabular-nums"
+      }
+      style={{
+        color,
+      }}
+    >
+      {prefix}NPR{" "}
+      {formatMoneyFromCents(
+        absolute
+      )}
+    </span>
   );
 }
 
 function RecentActivityRow({
   item,
+  borderTop = false,
 }: {
-  item: RecentActivityItem;
+  item: ActivityItem;
+  borderTop?: boolean;
 }) {
-  const amountColor =
-    item.amount > BigInt(0)
-      ? "var(--positive)"
-      : item.amount < BigInt(0)
-        ? "var(--negative)"
-        : "var(--foreground)";
+  const amount =
+    BigInt(
+      item.amountCents
+    );
 
-  const prefix =
-    item.amount > BigInt(0)
-      ? "+"
-      : "";
+  const amountColor =
+    item.kind ===
+    "transfer"
+      ? "var(--foreground)"
+      : amount >
+          BigInt(0)
+        ? "var(--positive)"
+        : amount <
+            BigInt(0)
+          ? "var(--negative)"
+          : "var(--foreground)";
 
   return (
     <div
-      className="flex items-center justify-between gap-4 rounded-[var(--radius-lg)] p-4"
+      className="flex items-center gap-3 px-4 py-3.5"
       style={{
-        backgroundColor: "var(--surface)",
-        border: "1px solid var(--border)",
+        borderTop:
+          borderTop
+            ? "1px solid var(--border)"
+            : undefined,
       }}
     >
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium">
+      <RecentActivityIcon
+        kind={item.kind}
+        amount={amount}
+      />
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-semibold">
           {item.title}
         </p>
 
         <p
-          className="mt-1 truncate text-xs"
+          className="mt-1 truncate text-[9px]"
           style={{
-            color: "var(--foreground-muted)",
+            color:
+              "var(--foreground-muted)",
           }}
         >
           {item.description}
         </p>
-
-        <p
-          className="mt-1 text-xs"
-          style={{
-            color: "var(--foreground-muted)",
-          }}
-        >
-          {formatKathmanduDate(item.occurredAt)}
-        </p>
       </div>
 
-      <p
-        className="shrink-0 text-sm font-semibold tabular-nums"
-        style={{
-          color: amountColor,
-        }}
-      >
-        {item.kind === "transfer"
-          ? `NPR ${formatMoneyFromCents(
-              absoluteMoney(item.amount)
-            )}`
-          : `${prefix}NPR ${formatMoneyFromCents(
-              item.amount
-            )}`}
-      </p>
+      <div className="shrink-0 text-right">
+        <p
+          className="text-[11px] font-semibold tabular-nums"
+          style={{
+            color:
+              amountColor,
+          }}
+        >
+          {formatActivityAmount(
+            item.kind,
+            amount
+          )}
+        </p>
+
+        <p
+          className="mt-1 text-[9px]"
+          style={{
+            color:
+              "var(--foreground-muted)",
+          }}
+        >
+          {formatKathmanduShortDate(
+            item.occurredAt
+          )}
+        </p>
+      </div>
     </div>
   );
 }
 
-function buildRecentActivity(
-  accounts: DashboardAccount[],
-  transactions: DashboardTransaction[],
-  gameSessions: DashboardGameSession[]
+function RecentActivityIcon({
+  kind,
+  amount,
+}: {
+  kind: ActivityKind;
+  amount: bigint;
+}) {
+  let icon =
+    <ArrowLeftRight
+      size={14}
+    />;
+
+  let color =
+    "var(--foreground-secondary)";
+
+  if (
+    kind === "income"
+  ) {
+    icon =
+      <ArrowDownLeft
+        size={14}
+      />;
+
+    color =
+      "var(--positive)";
+  }
+
+  if (
+    kind === "expense"
+  ) {
+    icon =
+      <ArrowUpRight
+        size={14}
+      />;
+
+    color =
+      "var(--negative)";
+  }
+
+  if (
+    kind === "game"
+  ) {
+    icon =
+      <Gamepad2
+        size={14}
+      />;
+
+    color =
+      amount > BigInt(0)
+        ? "var(--positive)"
+        : amount <
+            BigInt(0)
+          ? "var(--negative)"
+          : "var(--foreground-secondary)";
+  }
+
+  return (
+    <div
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)]"
+      style={{
+        backgroundColor:
+          "var(--surface-secondary)",
+        color,
+      }}
+    >
+      {icon}
+    </div>
+  );
+}
+
+function formatActivityAmount(
+  kind: ActivityKind,
+  value: bigint
 ) {
-  const accountNames = new Map(
-    accounts.map((account) => [
-      account.id,
-      account.name,
-    ])
-  );
+  const absolute =
+    value < BigInt(0)
+      ? -value
+      : value;
 
-  const items: RecentActivityItem[] = [];
-
-  for (const transaction of transactions) {
-    const amount =
-      moneyToCents(transaction.amount);
-
-    if (transaction.transaction_type === "income") {
-      const accountName =
-        transaction.to_account_id
-          ? accountNames.get(
-              transaction.to_account_id
-            ) ?? "Unknown account"
-          : "Unknown account";
-
-      items.push({
-        id: `transaction-${transaction.id}`,
-        title:
-          transaction.category || "Income",
-        description:
-          transaction.note ||
-          `To ${accountName}`,
-        amount,
-        kind: "income",
-        occurredAt: transaction.occurred_at,
-      });
-    }
-
-    if (transaction.transaction_type === "expense") {
-      const accountName =
-        transaction.from_account_id
-          ? accountNames.get(
-              transaction.from_account_id
-            ) ?? "Unknown account"
-          : "Unknown account";
-
-      items.push({
-        id: `transaction-${transaction.id}`,
-        title:
-          transaction.category || "Expense",
-        description:
-          transaction.note ||
-          `From ${accountName}`,
-        amount: -amount,
-        kind: "expense",
-        occurredAt: transaction.occurred_at,
-      });
-    }
-
-    if (transaction.transaction_type === "transfer") {
-      const fromAccount =
-        transaction.from_account_id
-          ? accountNames.get(
-              transaction.from_account_id
-            ) ?? "Unknown"
-          : "Unknown";
-
-      const toAccount =
-        transaction.to_account_id
-          ? accountNames.get(
-              transaction.to_account_id
-            ) ?? "Unknown"
-          : "Unknown";
-
-      items.push({
-        id: `transaction-${transaction.id}`,
-        title: "Transfer",
-        description:
-          transaction.note ||
-          `${fromAccount} → ${toAccount}`,
-        amount,
-        kind: "transfer",
-        occurredAt: transaction.occurred_at,
-      });
-    }
+  if (
+    kind === "transfer"
+  ) {
+    return `NPR ${formatMoneyFromCents(
+      absolute
+    )}`;
   }
 
-  for (const session of gameSessions) {
-    if (
-      session.status !== "completed" ||
-      session.result_type === null ||
-      session.result_amount === null
-    ) {
-      continue;
-    }
-
-    const amount =
-      moneyToCents(session.result_amount);
-
-    const pnl =
-      session.result_type === "win"
-        ? amount
-        : session.result_type === "loss"
-          ? -amount
-          : BigInt(0);
-
-    const resultLabel =
-      session.result_type === "win"
-        ? "Game win"
-        : session.result_type === "loss"
-          ? "Game loss"
-          : "Game even";
-
-    items.push({
-      id: `session-${session.id}`,
-      title: session.game_type,
-      description: resultLabel,
-      amount: pnl,
-      kind: "game",
-      occurredAt:
-        session.ended_at ??
-        session.started_at ??
-        new Date(0).toISOString(),
-    });
+  if (
+    value > BigInt(0)
+  ) {
+    return `+NPR ${formatMoneyFromCents(
+      value
+    )}`;
   }
 
-  return items.sort(
-    (a, b) =>
-      new Date(b.occurredAt).getTime() -
-      new Date(a.occurredAt).getTime()
+  if (
+    value < BigInt(0)
+  ) {
+    return `-NPR ${formatMoneyFromCents(
+      absolute
+    )}`;
+  }
+
+  return "NPR 0.00";
+}
+
+function formatKathmanduShortDate(
+  value: string
+) {
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      timeZone:
+        "Asia/Kathmandu",
+      month: "short",
+      day: "numeric",
+    }
+  ).format(
+    new Date(value)
   );
-}
-
-function absoluteMoney(value: bigint) {
-  return value < BigInt(0)
-    ? -value
-    : value;
-}
-
-function formatKathmanduDate(value: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Kathmandu",
-    month: "short",
-    day: "numeric",
-  }).format(new Date(value));
 }
