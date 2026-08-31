@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   LockKeyhole,
   Mail,
+  UserRound,
 } from "lucide-react";
 
 import {
@@ -23,36 +24,61 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export function SignUpForm() {
-  const router = useRouter();
+  const router =
+    useRouter();
 
-  const [email, setEmail] =
+  const [
+    name,
+    setName,
+  ] =
     useState("");
 
-  const [password, setPassword] =
+  const [
+    email,
+    setEmail,
+  ] =
+    useState("");
+
+  const [
+    password,
+    setPassword,
+  ] =
     useState("");
 
   const [
     confirmPassword,
     setConfirmPassword,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     showPassword,
     setShowPassword,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     showConfirmPassword,
     setShowConfirmPassword,
-  ] = useState(false);
+  ] =
+    useState(false);
 
-  const [error, setError] =
+  const [
+    error,
+    setError,
+  ] =
     useState("");
 
-  const [message, setMessage] =
+  const [
+    message,
+    setMessage,
+  ] =
     useState("");
 
-  const [loading, setLoading] =
+  const [
+    loading,
+    setLoading,
+  ] =
     useState(false);
 
   const passwordLongEnough =
@@ -61,18 +87,42 @@ export function SignUpForm() {
   const passwordsMatch =
     password.length > 0 &&
     confirmPassword.length > 0 &&
-    password === confirmPassword;
+    password ===
+      confirmPassword;
 
   async function handleSubmit(
-    event: FormEvent<HTMLFormElement>
+    event:
+      FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
     setError("");
     setMessage("");
 
+    const cleanName =
+      name.trim();
+
     const cleanEmail =
       email.trim();
+
+    if (!cleanName) {
+      setError(
+        "Enter your name."
+      );
+
+      return;
+    }
+
+    if (
+      cleanName.length >
+      50
+    ) {
+      setError(
+        "Name must be 50 characters or fewer."
+      );
+
+      return;
+    }
 
     if (!cleanEmail) {
       setError(
@@ -82,7 +132,9 @@ export function SignUpForm() {
       return;
     }
 
-    if (!passwordLongEnough) {
+    if (
+      !passwordLongEnough
+    ) {
       setError(
         "Password must be at least 8 characters."
       );
@@ -101,37 +153,51 @@ export function SignUpForm() {
       return;
     }
 
-    setLoading(true);
+    setLoading(
+      true
+    );
 
     const supabase =
       createClient();
 
     const {
       data,
-      error: signUpError,
+      error:
+        signUpError,
     } =
       await supabase.auth.signUp({
-        email: cleanEmail,
+        email:
+          cleanEmail,
+
         password,
+
+        options: {
+          data: {
+            display_name:
+              cleanName,
+          },
+        },
       });
 
-    if (signUpError) {
+    if (
+      signUpError
+    ) {
       setError(
         friendlyAuthError(
           signUpError.message
         )
       );
 
-      setLoading(false);
+      setLoading(
+        false
+      );
 
       return;
     }
 
-    /*
-      If email confirmation is disabled,
-      Supabase may return a session immediately.
-    */
-    if (data.session) {
+    if (
+      data.session
+    ) {
       router.replace(
         "/dashboard"
       );
@@ -141,18 +207,18 @@ export function SignUpForm() {
       return;
     }
 
-    /*
-      Otherwise the user must confirm
-      the email before signing in.
-    */
     setMessage(
       "Account created. Check your email to confirm your account, then sign in."
     );
 
-    setLoading(false);
+    setLoading(
+      false
+    );
   }
 
-  if (message) {
+  if (
+    message
+  ) {
     return (
       <div>
         <div
@@ -160,6 +226,7 @@ export function SignUpForm() {
           style={{
             backgroundColor:
               "var(--positive-soft)",
+
             border:
               "1px solid var(--positive)",
           }}
@@ -170,11 +237,14 @@ export function SignUpForm() {
               style={{
                 backgroundColor:
                   "var(--surface)",
+
                 color:
                   "var(--positive)",
               }}
             >
-              <Check size={17} />
+              <Check
+                size={17}
+              />
             </div>
 
             <div className="min-w-0">
@@ -195,7 +265,8 @@ export function SignUpForm() {
                     "var(--foreground-secondary)",
                 }}
               >
-                We sent a confirmation link to{" "}
+                We sent a confirmation
+                link to{" "}
                 <strong>
                   {email.trim()}
                 </strong>
@@ -212,24 +283,32 @@ export function SignUpForm() {
           style={{
             backgroundColor:
               "var(--primary)",
+
             color:
               "var(--primary-foreground)",
           }}
         >
           Back to sign in
-          <ArrowRight size={15} />
+
+          <ArrowRight
+            size={15}
+          />
         </Link>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      {/* Email */}
+    <form
+      onSubmit={
+        handleSubmit
+      }
+    >
+      {/* Name */}
       <AuthFieldLabel
-        htmlFor="signup-email"
+        htmlFor="signup-name"
       >
-        Email
+        Name
       </AuthFieldLabel>
 
       <div
@@ -237,31 +316,43 @@ export function SignUpForm() {
         style={{
           backgroundColor:
             "var(--surface)",
+
           border:
             "1px solid var(--border)",
         }}
       >
         <FieldIcon>
-          <Mail size={17} />
+          <UserRound
+            size={17}
+          />
         </FieldIcon>
 
         <input
-          id="signup-email"
-          type="email"
-          value={email}
-          onChange={(event) => {
-            setEmail(
+          id="signup-name"
+          type="text"
+          value={
+            name
+          }
+          onChange={(
+            event
+          ) => {
+            setName(
               event.target.value
             );
 
-            if (error) {
+            if (
+              error
+            ) {
               setError("");
             }
           }}
-          placeholder="you@example.com"
-          autoComplete="email"
+          placeholder="Your name"
+          autoComplete="name"
+          maxLength={50}
           required
-          disabled={loading}
+          disabled={
+            loading
+          }
           className="h-full min-w-0 flex-1 bg-transparent pr-4 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
           style={{
             color:
@@ -270,32 +361,104 @@ export function SignUpForm() {
         />
       </div>
 
+      {/* Email */}
+      <div className="mt-5">
+        <AuthFieldLabel
+          htmlFor="signup-email"
+        >
+          Email
+        </AuthFieldLabel>
+
+        <div
+          className="mt-2 flex h-[52px] items-center rounded-[var(--radius-lg)] transition focus-within:border-[var(--primary)] focus-within:shadow-[0_0_0_3px_rgba(0,102,255,0.10)]"
+          style={{
+            backgroundColor:
+              "var(--surface)",
+
+            border:
+              "1px solid var(--border)",
+          }}
+        >
+          <FieldIcon>
+            <Mail
+              size={17}
+            />
+          </FieldIcon>
+
+          <input
+            id="signup-email"
+            type="email"
+            value={
+              email
+            }
+            onChange={(
+              event
+            ) => {
+              setEmail(
+                event.target.value
+              );
+
+              if (
+                error
+              ) {
+                setError("");
+              }
+            }}
+            placeholder="you@example.com"
+            autoComplete="email"
+            required
+            disabled={
+              loading
+            }
+            className="h-full min-w-0 flex-1 bg-transparent pr-4 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            style={{
+              color:
+                "var(--foreground)",
+            }}
+          />
+        </div>
+      </div>
+
       {/* Password */}
       <div className="mt-5">
         <PasswordField
           id="signup-password"
           label="Password"
-          value={password}
-          show={showPassword}
-          disabled={loading}
+          value={
+            password
+          }
+          show={
+            showPassword
+          }
+          disabled={
+            loading
+          }
           placeholder="Create a password"
-          onChange={(value) => {
-            setPassword(value);
+          onChange={(
+            value
+          ) => {
+            setPassword(
+              value
+            );
 
-            if (error) {
+            if (
+              error
+            ) {
               setError("");
             }
           }}
           onToggle={() =>
             setShowPassword(
-              (current) =>
+              (
+                current
+              ) =>
                 !current
             )
           }
         />
       </div>
 
-      {/* Confirm */}
+      {/* Confirm password */}
       <div className="mt-5">
         <PasswordField
           id="confirm-password"
@@ -306,20 +469,28 @@ export function SignUpForm() {
           show={
             showConfirmPassword
           }
-          disabled={loading}
+          disabled={
+            loading
+          }
           placeholder="Enter password again"
-          onChange={(value) => {
+          onChange={(
+            value
+          ) => {
             setConfirmPassword(
               value
             );
 
-            if (error) {
+            if (
+              error
+            ) {
               setError("");
             }
           }}
           onToggle={() =>
             setShowConfirmPassword(
-              (current) =>
+              (
+                current
+              ) =>
                 !current
             )
           }
@@ -352,8 +523,10 @@ export function SignUpForm() {
           style={{
             backgroundColor:
               "var(--negative-soft)",
+
             border:
               "1px solid var(--negative)",
+
             color:
               "var(--negative)",
           }}
@@ -365,13 +538,17 @@ export function SignUpForm() {
       {/* Submit */}
       <button
         type="submit"
-        disabled={loading}
+        disabled={
+          loading
+        }
         className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
         style={{
           backgroundColor:
             "var(--primary)",
+
           color:
             "var(--primary-foreground)",
+
           boxShadow:
             "0 8px 24px rgba(0, 102, 255, 0.18)",
         }}
@@ -423,7 +600,10 @@ export function SignUpForm() {
           }}
         >
           Sign in
-          <ArrowRight size={14} />
+
+          <ArrowRight
+            size={14}
+          />
         </Link>
       </div>
     </form>
@@ -440,21 +620,39 @@ function PasswordField({
   onChange,
   onToggle,
 }: {
-  id: string;
-  label: string;
-  value: string;
-  show: boolean;
-  disabled: boolean;
-  placeholder: string;
-  onChange: (
-    value: string
-  ) => void;
-  onToggle: () => void;
+  id:
+    string;
+
+  label:
+    string;
+
+  value:
+    string;
+
+  show:
+    boolean;
+
+  disabled:
+    boolean;
+
+  placeholder:
+    string;
+
+  onChange:
+    (
+      value:
+        string
+    ) => void;
+
+  onToggle:
+    () => void;
 }) {
   return (
     <div>
       <AuthFieldLabel
-        htmlFor={id}
+        htmlFor={
+          id
+        }
       >
         {label}
       </AuthFieldLabel>
@@ -464,6 +662,7 @@ function PasswordField({
         style={{
           backgroundColor:
             "var(--surface)",
+
           border:
             "1px solid var(--border)",
         }}
@@ -475,14 +674,20 @@ function PasswordField({
         </FieldIcon>
 
         <input
-          id={id}
+          id={
+            id
+          }
           type={
             show
               ? "text"
               : "password"
           }
-          value={value}
-          onChange={(event) =>
+          value={
+            value
+          }
+          onChange={(
+            event
+          ) =>
             onChange(
               event.target.value
             )
@@ -492,7 +697,9 @@ function PasswordField({
           }
           autoComplete="new-password"
           required
-          disabled={disabled}
+          disabled={
+            disabled
+          }
           className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
           style={{
             color:
@@ -502,8 +709,12 @@ function PasswordField({
 
         <button
           type="button"
-          onClick={onToggle}
-          disabled={disabled}
+          onClick={
+            onToggle
+          }
+          disabled={
+            disabled
+          }
           aria-label={
             show
               ? "Hide password"
@@ -516,9 +727,13 @@ function PasswordField({
           }}
         >
           {show ? (
-            <EyeOff size={17} />
+            <EyeOff
+              size={17}
+            />
           ) : (
-            <Eye size={17} />
+            <Eye
+              size={17}
+            />
           )}
         </button>
       </div>
@@ -530,12 +745,17 @@ function AuthFieldLabel({
   htmlFor,
   children,
 }: {
-  htmlFor: string;
-  children: React.ReactNode;
+  htmlFor:
+    string;
+
+  children:
+    React.ReactNode;
 }) {
   return (
     <label
-      htmlFor={htmlFor}
+      htmlFor={
+        htmlFor
+      }
       className="text-[10px] font-medium uppercase tracking-[0.14em]"
       style={{
         color:
@@ -550,7 +770,8 @@ function AuthFieldLabel({
 function FieldIcon({
   children,
 }: {
-  children: React.ReactNode;
+  children:
+    React.ReactNode;
 }) {
   return (
     <div
@@ -569,16 +790,20 @@ function Requirement({
   satisfied,
   children,
 }: {
-  satisfied: boolean;
-  children: React.ReactNode;
+  satisfied:
+    boolean;
+
+  children:
+    React.ReactNode;
 }) {
   return (
     <div
       className="flex items-center gap-1.5 text-[10px]"
       style={{
-        color: satisfied
-          ? "var(--positive)"
-          : "var(--foreground-muted)",
+        color:
+          satisfied
+            ? "var(--positive)"
+            : "var(--foreground-muted)",
       }}
     >
       <CheckCircle2
@@ -591,7 +816,8 @@ function Requirement({
 }
 
 function friendlyAuthError(
-  message: string
+  message:
+    string
 ) {
   if (
     message

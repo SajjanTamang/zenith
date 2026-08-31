@@ -1,18 +1,188 @@
 "use client";
 
 import Link from "next/link";
-import { Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
+
+import {
+  Moon,
+  Sun,
+} from "lucide-react";
+
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import {
+  useTheme,
+} from "next-themes";
+
+import {
+  createClient,
+} from "@/lib/supabase/client";
 
 export function AppHeader() {
   const {
     resolvedTheme,
     setTheme,
-  } = useTheme();
+  } =
+    useTheme();
+
+  const [
+    displayName,
+    setDisplayName,
+  ] =
+    useState(
+      "Zenith Finance"
+    );
+
+  useEffect(
+    () => {
+      let active =
+        true;
+
+      const supabase =
+        createClient();
+
+      function applyUser(
+        user:
+          | {
+              email?:
+                string;
+
+              user_metadata?:
+                Record<
+                  string,
+                  unknown
+                >;
+            }
+          | null
+          | undefined
+      ) {
+        if (
+          !user ||
+          !active
+        ) {
+          return;
+        }
+
+        const metadataName =
+          typeof user
+            .user_metadata
+            ?.display_name ===
+          "string"
+            ? user.user_metadata.display_name.trim()
+            : "";
+
+        if (
+          metadataName
+        ) {
+          setDisplayName(
+            metadataName
+          );
+
+          return;
+        }
+
+        const fallbackName =
+          getNameFromEmail(
+            user.email
+          );
+
+        if (
+          fallbackName
+        ) {
+          setDisplayName(
+            fallbackName
+          );
+        }
+      }
+
+      async function loadUser() {
+        const {
+          data,
+        } =
+          await supabase.auth.getUser();
+
+        applyUser(
+          data.user
+        );
+      }
+
+      void loadUser();
+
+      /*
+        Also react to Supabase Auth
+        user updates.
+      */
+      const {
+        data:
+          authListener,
+      } =
+        supabase.auth.onAuthStateChange(
+          (
+            _event,
+            session
+          ) => {
+            applyUser(
+              session?.user
+            );
+          }
+        );
+
+      /*
+        Profile form sends this event
+        after display name changes.
+      */
+      function handleProfileUpdate(
+        event:
+          Event
+      ) {
+        const customEvent =
+          event as CustomEvent<{
+            displayName?:
+              string;
+          }>;
+
+        const newName =
+          customEvent.detail
+            ?.displayName
+            ?.trim();
+
+        if (
+          newName
+        ) {
+          setDisplayName(
+            newName
+          );
+        }
+      }
+
+      window.addEventListener(
+        "zenith-profile-updated",
+        handleProfileUpdate
+      );
+
+      return () => {
+        active =
+          false;
+
+        authListener
+          .subscription
+          .unsubscribe();
+
+        window.removeEventListener(
+          "zenith-profile-updated",
+          handleProfileUpdate
+        );
+      };
+    },
+    []
+  );
 
   function toggleTheme() {
     setTheme(
-      resolvedTheme === "dark"
+      resolvedTheme ===
+        "dark"
         ? "light"
         : "dark"
     );
@@ -24,6 +194,7 @@ export function AppHeader() {
       style={{
         backgroundColor:
           "var(--background)",
+
         borderColor:
           "var(--border)",
       }}
@@ -32,13 +203,14 @@ export function AppHeader() {
         <Link
           href="/profile"
           aria-label="Open profile"
-          className="flex items-center gap-2"
+          className="flex min-w-0 items-center gap-2"
         >
           <div
-            className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold"
             style={{
               backgroundColor:
                 "var(--surface-secondary)",
+
               color:
                 "var(--foreground)",
             }}
@@ -46,16 +218,18 @@ export function AppHeader() {
             Z
           </div>
 
-          <span className="text-sm font-semibold">
-            Zenith Finance
+          <span className="truncate text-sm font-semibold">
+            {displayName}
           </span>
         </Link>
 
         <button
           type="button"
           aria-label="Toggle color theme"
-          onClick={toggleTheme}
-          className="relative flex h-9 w-9 items-center justify-center rounded-lg transition"
+          onClick={
+            toggleTheme
+          }
+          className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition"
           style={{
             color:
               "var(--foreground-secondary)",
@@ -75,5 +249,50 @@ export function AppHeader() {
         </button>
       </div>
     </header>
+  );
+}
+
+function getNameFromEmail(
+  email:
+    string
+    | undefined
+) {
+  if (
+    !email
+  ) {
+    return "";
+  }
+
+  const localPart =
+    email
+      .split("@")[0]
+      ?.trim();
+
+  if (
+    !localPart
+  ) {
+    return "";
+  }
+
+  const firstPart =
+    localPart
+      .split(
+        /[._-]+/
+      )
+      .find(
+        Boolean
+      );
+
+  if (
+    !firstPart
+  ) {
+    return "";
+  }
+
+  return (
+    firstPart
+      .charAt(0)
+      .toUpperCase() +
+    firstPart.slice(1)
   );
 }

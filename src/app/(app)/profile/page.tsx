@@ -10,21 +10,48 @@ import {
   WalletCards,
 } from "lucide-react";
 
-import { SignOutButton } from "@/components/auth/sign-out-button";
-import { createClient } from "@/lib/supabase/server";
+import {
+  SignOutButton,
+} from "@/components/auth/sign-out-button";
+
+import {
+  DisplayNameForm,
+} from "@/components/profile/display-name-form";
+
+import {
+  createClient,
+} from "@/lib/supabase/server";
 
 export default async function ProfilePage() {
   const supabase =
     await createClient();
 
-  const { data } =
-    await supabase.auth.getClaims();
+  const {
+    data,
+  } =
+    await supabase.auth.getUser();
+
+  const user =
+    data.user;
 
   const email =
-    typeof data?.claims?.email ===
+    user?.email ??
+    "Unknown";
+
+  const metadataName =
+    typeof user
+      ?.user_metadata
+      ?.display_name ===
     "string"
-      ? data.claims.email
-      : "Unknown";
+      ? user.user_metadata.display_name.trim()
+      : "";
+
+  const displayName =
+    metadataName ||
+    getNameFromEmail(
+      email
+    ) ||
+    "Zenith User";
 
   return (
     <div>
@@ -83,14 +110,14 @@ export default async function ProfilePage() {
                   "var(--foreground)",
               }}
             >
-              {getEmailInitial(
-                email
+              {getNameInitial(
+                displayName
               )}
             </div>
 
             <div className="min-w-0">
-              <p className="text-sm font-semibold">
-                Zenith Account
+              <p className="truncate text-sm font-semibold">
+                {displayName}
               </p>
 
               <p
@@ -105,6 +132,12 @@ export default async function ProfilePage() {
             </div>
           </div>
         </div>
+
+        <DisplayNameForm
+          initialName={
+            displayName
+          }
+        />
       </section>
 
       {/* Money */}
@@ -198,45 +231,17 @@ export default async function ProfilePage() {
             }
           />
 
-          <div
-            className="flex items-center gap-3 px-4 py-4"
-            style={{
-              borderTop:
-                "1px solid var(--border)",
-            }}
-          >
-            <ProfileIcon>
+          <ProfileLink
+            href="/reports"
+            borderTop
+            icon={
               <FileDown
                 size={16}
               />
-            </ProfileIcon>
-
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">
-                Reports & Export
-              </p>
-
-              <p
-                className="mt-1 text-[10px]"
-                style={{
-                  color:
-                    "var(--foreground-muted)",
-                }}
-              >
-                Coming later
-              </p>
-            </div>
-
-            <span
-              className="text-[10px] font-medium"
-              style={{
-                color:
-                  "var(--foreground-muted)",
-              }}
-            >
-              Soon
-            </span>
-          </div>
+            }
+            label="Reports & Export"
+            description="Review monthly finances and export your records."
+          />
         </div>
       </section>
 
@@ -274,12 +279,14 @@ function ProfileLink({
   description,
   borderTop = false,
 }: {
-  href: string;
+  href:
+    string;
 
   icon:
     React.ReactNode;
 
-  label: string;
+  label:
+    string;
 
   description:
     string;
@@ -340,9 +347,11 @@ function ProfileValue({
   icon:
     React.ReactNode;
 
-  label: string;
+  label:
+    string;
 
-  value: string;
+  value:
+    string;
 
   borderTop?:
     boolean;
@@ -402,18 +411,66 @@ function ProfileIcon({
   );
 }
 
-function getEmailInitial(
-  email: string
+function getNameInitial(
+  name:
+    string
+) {
+  const cleanName =
+    name.trim();
+
+  if (
+    !cleanName
+  ) {
+    return "Z";
+  }
+
+  return cleanName
+    .charAt(0)
+    .toUpperCase();
+}
+
+function getNameFromEmail(
+  email:
+    string
 ) {
   if (
     !email ||
     email ===
       "Unknown"
   ) {
-    return "Z";
+    return "";
   }
 
-  return email
-    .charAt(0)
-    .toUpperCase();
+  const localPart =
+    email
+      .split("@")[0]
+      ?.trim();
+
+  if (
+    !localPart
+  ) {
+    return "";
+  }
+
+  const firstPart =
+    localPart
+      .split(
+        /[._-]+/
+      )
+      .find(
+        Boolean
+      );
+
+  if (
+    !firstPart
+  ) {
+    return "";
+  }
+
+  return (
+    firstPart
+      .charAt(0)
+      .toUpperCase() +
+    firstPart.slice(1)
+  );
 }

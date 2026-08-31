@@ -390,6 +390,7 @@ function ActiveSessionCard({
       }}
     >
       <div className="p-5">
+        {/* Active state */}
         <div className="flex items-center gap-2">
           <span
             className="h-2 w-2 rounded-full"
@@ -410,6 +411,7 @@ function ActiveSessionCard({
           </span>
         </div>
 
+        {/* Session details */}
         <div className="mt-4 flex items-start justify-between gap-5">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -464,6 +466,7 @@ function ActiveSessionCard({
           </div>
         </div>
 
+        {/* Session note */}
         {session.note && (
           <p
             className="mt-4 text-[10px] leading-4"
@@ -475,51 +478,46 @@ function ActiveSessionCard({
             {session.note}
           </p>
         )}
+
+        {/* Secondary contextual action */}
+        <div className="mt-5">
+          <Link
+            href={
+              lendHref
+            }
+            className="inline-flex items-center gap-2 text-[11px] font-semibold"
+            style={{
+              color:
+                "var(--primary)",
+            }}
+          >
+            <HandCoins
+              size={14}
+            />
+
+            Lend money
+          </Link>
+        </div>
       </div>
 
-      {/* Active session actions */}
-      <div
-        className="grid grid-cols-2 border-t"
+      {/* Primary action */}
+      <Link
+        href={`/sessions/${session.id}/finish`}
+        className="flex h-12 items-center justify-end gap-2 border-t px-5 text-sm font-semibold"
         style={{
           borderColor:
             "var(--border)",
+
+          color:
+            "var(--primary)",
         }}
       >
-        <Link
-          href={
-            lendHref
-          }
-          className="flex h-12 items-center justify-center gap-2 text-xs font-semibold"
-          style={{
-            color:
-              "var(--primary)",
-          }}
-        >
-          <HandCoins
-            size={15}
-          />
+        Finish Session
 
-          Lend Money
-        </Link>
-
-        <Link
-          href={`/sessions/${session.id}/finish`}
-          className="flex h-12 items-center justify-center gap-2 border-l text-xs font-semibold"
-          style={{
-            borderColor:
-              "var(--border)",
-
-            color:
-              "var(--primary)",
-          }}
-        >
-          Finish Session
-
-          <ArrowRight
-            size={14}
-          />
-        </Link>
-      </div>
+        <ArrowRight
+          size={15}
+        />
+      </Link>
     </div>
   );
 }
@@ -794,8 +792,7 @@ function SignedMoney({
 }
 
 function getSessionPnL(
-  session:
-    GameSession
+  session: GameSession
 ) {
   if (
     session.status !==
@@ -831,8 +828,7 @@ function getSessionPnL(
 }
 
 function groupSessionsByDate(
-  sessions:
-    GameSession[]
+  sessions: GameSession[]
 ) {
   const groups =
     new Map<
