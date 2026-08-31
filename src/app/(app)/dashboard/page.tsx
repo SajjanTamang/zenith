@@ -36,7 +36,9 @@ import {
 } from "@/lib/finance";
 
 import {
+  calculateGameAnalytics,
   getCurrentMonthGameAnalytics,
+  kathmanduMonthKey,
   type AnalyticsGameSession,
 } from "@/lib/game-analytics";
 
@@ -47,6 +49,14 @@ import {
 import {
   createClient,
 } from "@/lib/supabase/server";
+
+type DashboardPageProps = {
+  searchParams: Promise<{
+    pnlMonth?:
+      | string
+      | string[];
+  }>;
+};
 
 type DashboardAccount =
   FinanceAccount & {
@@ -88,35 +98,48 @@ type DashboardLoanPerson = {
   name: string;
 };
 
-/*
-  FinanceLoan keeps lent_at optional
-  because it is a reusable finance type.
-
-  This Dashboard query explicitly selects
-  lent_at, and the database column is NOT NULL,
-  so we make it required here.
-*/
 type DashboardLoan =
   FinanceLoan & {
     lent_at: string;
   };
 
-/*
-  Same idea for repayments.
-
-  The Dashboard query explicitly selects
-  id and repaid_at, and both exist for
-  every stored repayment.
-*/
 type DashboardLoanRepayment =
   FinanceLoanRepayment & {
     id: string;
     repaid_at: string;
   };
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: DashboardPageProps) {
   const supabase =
     await createClient();
+
+  const params =
+    await searchParams;
+
+  /*
+    The top Dashboard always uses
+    the real current month.
+
+    pnlMonth only controls the
+    historical P&L calendar.
+  */
+  const currentMonthKey =
+    kathmanduMonthKey(
+      new Date()
+    );
+
+  const requestedPnlMonth =
+    firstSearchParam(
+      params.pnlMonth
+    );
+
+  const selectedPnlMonthKey =
+    getSafeMonthKey(
+      requestedPnlMonth,
+      currentMonthKey
+    );
 
   const [
     accountsResult,
@@ -128,7 +151,9 @@ export default async function DashboardPage() {
   ] =
     await Promise.all([
       supabase
-        .from("accounts")
+        .from(
+          "accounts"
+        )
         .select(`
           id,
           name,
@@ -137,7 +162,9 @@ export default async function DashboardPage() {
         `),
 
       supabase
-        .from("transactions")
+        .from(
+          "transactions"
+        )
         .select(`
           id,
           transaction_type,
@@ -150,7 +177,9 @@ export default async function DashboardPage() {
         `),
 
       supabase
-        .from("game_sessions")
+        .from(
+          "game_sessions"
+        )
         .select(`
           id,
           bankroll_account_id,
@@ -165,14 +194,18 @@ export default async function DashboardPage() {
         `),
 
       supabase
-        .from("loan_people")
+        .from(
+          "loan_people"
+        )
         .select(`
           id,
           name
         `),
 
       supabase
-        .from("loans")
+        .from(
+          "loans"
+        )
         .select(`
           id,
           person_id,
@@ -185,7 +218,9 @@ export default async function DashboardPage() {
         `),
 
       supabase
-        .from("loan_repayments")
+        .from(
+          "loan_repayments"
+        )
         .select(`
           id,
           loan_id,
@@ -313,8 +348,10 @@ export default async function DashboardPage() {
     );
 
   /*
-    Lending summary used only when
-    there is currently money owed.
+    Lending summary.
+
+    This remains exactly the same
+    as the previous Dashboard.
   */
   const outstandingLoans =
     typedLoans.filter(
@@ -380,8 +417,10 @@ export default async function DashboardPage() {
     );
 
   /*
-    Current Kathmandu-month
-    game analytics.
+    Current month analytics.
+
+    These numbers remain current even
+    while browsing an older calendar.
   */
   const thisMonthGame =
     getCurrentMonthGameAnalytics(
@@ -389,7 +428,27 @@ export default async function DashboardPage() {
     );
 
   /*
-    Monthly financial movement:
+    Only the calendar uses the
+    selected historical month.
+  */
+  const selectedMonthSessions =
+    typedGameSessions.filter(
+      (session) =>
+        session.status ===
+          "completed" &&
+        kathmanduMonthKey(
+          session.started_at
+        ) ===
+          selectedPnlMonthKey
+    );
+
+  const selectedMonthGame =
+    calculateGameAnalytics(
+      selectedMonthSessions
+    );
+
+  /*
+    Current monthly financial movement:
 
     Income
     - Expenses
@@ -404,14 +463,7 @@ export default async function DashboardPage() {
     thisMonthGame.totalPnL;
 
   /*
-    Unified newest-first timeline:
-
-    Income
-    Expenses
-    Transfers
-    Games
-    Loans
-    Repayments
+    Unified newest-first timeline.
   */
   const recentActivity =
     buildActivityItems(
@@ -428,8 +480,20 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      {/* Available balance */}
-      <section>
+      {/* Available Balance Hero */}
+      <section
+        className="rounded-[var(--radius-lg)] px-5 py-6"
+        style={{
+          background:
+            "linear-gradient(145deg, var(--surface-elevated), var(--surface))",
+
+          border:
+            "1px solid var(--border-strong)",
+
+          boxShadow:
+            "0 18px 42px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 102, 255, 0.04)",
+        }}
+      >
         <p
           className="text-[10px] font-medium uppercase tracking-[0.16em]"
           style={{
@@ -440,7 +504,7 @@ export default async function DashboardPage() {
           Available balance
         </p>
 
-        <div className="mt-3 flex items-baseline gap-2">
+        <div className="mt-4 flex items-baseline gap-2">
           <span
             className="text-sm font-medium"
             style={{
@@ -451,14 +515,20 @@ export default async function DashboardPage() {
             NPR
           </span>
 
-          <p className="text-[36px] font-semibold leading-none tracking-[-0.045em] tabular-nums">
+          <p className="text-[42px] font-semibold leading-none tracking-[-0.05em] tabular-nums">
             {formatMoneyFromCents(
               availableBalance
             )}
           </p>
         </div>
 
-        <div className="mt-3 flex items-center gap-2">
+        <div
+          className="mt-5 inline-flex items-center gap-2 rounded-full px-3 py-1.5"
+          style={{
+            backgroundColor:
+              "var(--surface-secondary)",
+          }}
+        >
           <SignedMoney
             value={
               monthlyNetMovement
@@ -479,13 +549,7 @@ export default async function DashboardPage() {
       </section>
 
       {/* This month */}
-      <section
-        className="mt-8 border-t pt-6"
-        style={{
-          borderColor:
-            "var(--border)",
-        }}
-      >
+      <section className="mt-8">
         <p
           className="text-[10px] font-medium uppercase tracking-[0.14em]"
           style={{
@@ -531,15 +595,11 @@ export default async function DashboardPage() {
       </section>
 
       {/*
-        Only show Lending + Net Worth
-        when money is currently owed.
+        Lending display and logic remain
+        exactly as before.
 
-        When outstanding lending is zero:
-
-        Available Balance = Net Worth
-
-        so there is no need to display
-        the same number twice.
+        This section only appears when
+        money is currently owed.
       */}
       {outstandingLending >
         BigInt(0) && (
@@ -671,7 +731,7 @@ export default async function DashboardPage() {
         </section>
       )}
 
-      {/* Calendar */}
+      {/* Historical P&L Calendar */}
       <section
         className="mt-8 border-t pt-7"
         style={{
@@ -681,7 +741,13 @@ export default async function DashboardPage() {
       >
         <PnLCalendar
           dailyResults={
-            thisMonthGame.dailyResults
+            selectedMonthGame.dailyResults
+          }
+          monthKey={
+            selectedPnlMonthKey
+          }
+          currentMonthKey={
+            currentMonthKey
           }
         />
       </section>
@@ -943,13 +1009,6 @@ function RecentActivityRow({
       item.amountCents
     );
 
-  /*
-    Lending remains blue.
-
-    Loan/repayment direction is
-    communicated using +/- and arrows,
-    not expense/income colors.
-  */
   const amountColor =
     item.kind ===
       "loan" ||
@@ -1047,9 +1106,6 @@ function RecentActivityIcon({
   let color =
     "var(--foreground-secondary)";
 
-  /*
-    Income
-  */
   if (
     kind ===
     "income"
@@ -1063,9 +1119,6 @@ function RecentActivityIcon({
       "var(--positive)";
   }
 
-  /*
-    Expense
-  */
   if (
     kind ===
     "expense"
@@ -1079,9 +1132,6 @@ function RecentActivityIcon({
       "var(--negative)";
   }
 
-  /*
-    Game result
-  */
   if (
     kind ===
     "game"
@@ -1101,10 +1151,6 @@ function RecentActivityIcon({
           : "var(--foreground-secondary)";
   }
 
-  /*
-    Money lent:
-    Hand + outward arrow
-  */
   if (
     kind ===
     "loan"
@@ -1127,10 +1173,6 @@ function RecentActivityIcon({
       "var(--primary)";
   }
 
-  /*
-    Repayment:
-    Hand + inward arrow
-  */
   if (
     kind ===
     "repayment"
@@ -1178,9 +1220,6 @@ function formatActivityAmount(
       ? -value
       : value;
 
-  /*
-    Transfer is neutral.
-  */
   if (
     kind ===
     "transfer"
@@ -1190,10 +1229,6 @@ function formatActivityAmount(
     )}`;
   }
 
-  /*
-    Loan:
-    cash left the account.
-  */
   if (
     kind ===
     "loan"
@@ -1203,10 +1238,6 @@ function formatActivityAmount(
     )}`;
   }
 
-  /*
-    Repayment:
-    cash returned.
-  */
   if (
     kind ===
     "repayment"
@@ -1259,7 +1290,8 @@ function getLendingSummary(
   peopleCount: number
 ) {
   if (
-    loanCount === 0
+    loanCount ===
+    0
   ) {
     return "Nobody owes you money";
   }
@@ -1297,4 +1329,67 @@ function formatKathmanduShortDate(
       value
     )
   );
+}
+
+function firstSearchParam(
+  value:
+    | string
+    | string[]
+    | undefined
+) {
+  if (
+    Array.isArray(
+      value
+    )
+  ) {
+    return (
+      value[0] ??
+      ""
+    );
+  }
+
+  return value ?? "";
+}
+
+function getSafeMonthKey(
+  requested: string,
+  currentMonthKey: string
+) {
+  if (
+    !/^\d{4}-\d{2}$/.test(
+      requested
+    )
+  ) {
+    return currentMonthKey;
+  }
+
+  const [
+    year,
+    month,
+  ] =
+    requested
+      .split("-")
+      .map(Number);
+
+  if (
+    !Number.isInteger(
+      year
+    ) ||
+    !Number.isInteger(
+      month
+    ) ||
+    month < 1 ||
+    month > 12
+  ) {
+    return currentMonthKey;
+  }
+
+  if (
+    requested >
+    currentMonthKey
+  ) {
+    return currentMonthKey;
+  }
+
+  return requested;
 }
