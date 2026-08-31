@@ -4,6 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Zenith Finance",
     short_name: "Zenith",
+
     description:
       "Personal finance, game P&L and lending tracker.",
 
@@ -17,17 +18,28 @@ export default function manifest(): MetadataRoute.Manifest {
 
     orientation: "portrait",
 
+    categories: [
+      "finance",
+      "productivity",
+    ],
+
     icons: [
       {
-        src: "/zenith-icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
+        src: "/zenith-192.png",
+        sizes: "192x192",
+        type: "image/png",
         purpose: "any",
       },
       {
-        src: "/zenith-icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
+        src: "/zenith-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/zenith-maskable-512.png",
+        sizes: "512x512",
+        type: "image/png",
         purpose: "maskable",
       },
     ],
