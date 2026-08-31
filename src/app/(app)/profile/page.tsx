@@ -5,6 +5,7 @@ import {
   Clock3,
   Coins,
   FileDown,
+  HandCoins,
   Mail,
   WalletCards,
 } from "lucide-react";
@@ -66,6 +67,7 @@ export default async function ProfilePage() {
           style={{
             backgroundColor:
               "var(--surface)",
+
             border:
               "1px solid var(--border)",
           }}
@@ -76,6 +78,7 @@ export default async function ProfilePage() {
               style={{
                 backgroundColor:
                   "var(--surface-secondary)",
+
                 color:
                   "var(--foreground)",
               }}
@@ -115,6 +118,7 @@ export default async function ProfilePage() {
           style={{
             backgroundColor:
               "var(--surface)",
+
             border:
               "1px solid var(--border)",
           }}
@@ -128,6 +132,18 @@ export default async function ProfilePage() {
             }
             label="Accounts"
             description="Manage cash, bank, wallet, and bankroll accounts."
+          />
+
+          <ProfileLink
+            href="/lending"
+            borderTop
+            icon={
+              <HandCoins
+                size={16}
+              />
+            }
+            label="Lending"
+            description="Track money lent, outstanding balances, and repayments."
           />
 
           <ProfileValue
@@ -165,16 +181,21 @@ export default async function ProfilePage() {
           style={{
             backgroundColor:
               "var(--surface)",
+
             border:
               "1px solid var(--border)",
           }}
         >
           <ProfileValue
             icon={
-              <Mail size={16} />
+              <Mail
+                size={16}
+              />
             }
             label="Email"
-            value={email}
+            value={
+              email
+            }
           />
 
           <div
@@ -230,7 +251,8 @@ export default async function ProfilePage() {
 function SectionLabel({
   children,
 }: {
-  children: React.ReactNode;
+  children:
+    React.ReactNode;
 }) {
   return (
     <h2
@@ -250,16 +272,33 @@ function ProfileLink({
   icon,
   label,
   description,
+  borderTop = false,
 }: {
   href: string;
-  icon: React.ReactNode;
+
+  icon:
+    React.ReactNode;
+
   label: string;
-  description: string;
+
+  description:
+    string;
+
+  borderTop?:
+    boolean;
 }) {
   return (
     <Link
-      href={href}
+      href={
+        href
+      }
       className="flex items-center gap-3 px-4 py-4 transition"
+      style={{
+        borderTop:
+          borderTop
+            ? "1px solid var(--border)"
+            : undefined,
+      }}
     >
       <ProfileIcon>
         {icon}
@@ -298,10 +337,15 @@ function ProfileValue({
   value,
   borderTop = false,
 }: {
-  icon: React.ReactNode;
+  icon:
+    React.ReactNode;
+
   label: string;
+
   value: string;
-  borderTop?: boolean;
+
+  borderTop?:
+    boolean;
 }) {
   return (
     <div
@@ -339,7 +383,8 @@ function ProfileValue({
 function ProfileIcon({
   children,
 }: {
-  children: React.ReactNode;
+  children:
+    React.ReactNode;
 }) {
   return (
     <div
@@ -347,6 +392,7 @@ function ProfileIcon({
       style={{
         backgroundColor:
           "var(--surface-secondary)",
+
         color:
           "var(--foreground-secondary)",
       }}
@@ -361,7 +407,8 @@ function getEmailInitial(
 ) {
   if (
     !email ||
-    email === "Unknown"
+    email ===
+      "Unknown"
   ) {
     return "Z";
   }

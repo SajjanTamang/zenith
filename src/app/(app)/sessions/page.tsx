@@ -4,6 +4,7 @@ import {
   ArrowRight,
   CircleDot,
   Gamepad2,
+  HandCoins,
 } from "lucide-react";
 
 import {
@@ -17,13 +18,21 @@ import {
   moneyToCents,
 } from "@/lib/money";
 
-import { createClient } from "@/lib/supabase/server";
+import {
+  createClient,
+} from "@/lib/supabase/server";
 
 type GameSession =
   AnalyticsGameSession & {
-    playing_amount: string | number;
+    playing_amount:
+      | string
+      | number;
+
     game_type: string;
-    note: string | null;
+
+    note:
+      | string
+      | null;
   };
 
 type SessionGroup = {
@@ -39,22 +48,26 @@ export default async function SessionsPage() {
   const {
     data: sessions,
     error,
-  } = await supabase
-    .from("game_sessions")
-    .select(`
-      id,
-      playing_amount,
-      game_type,
-      note,
-      status,
-      result_type,
-      result_amount,
-      started_at,
-      ended_at
-    `)
-    .order("started_at", {
-      ascending: false,
-    });
+  } =
+    await supabase
+      .from("game_sessions")
+      .select(`
+        id,
+        playing_amount,
+        game_type,
+        note,
+        status,
+        result_type,
+        result_amount,
+        started_at,
+        ended_at
+      `)
+      .order(
+        "started_at",
+        {
+          ascending: false,
+        }
+      );
 
   if (error) {
     return (
@@ -78,6 +91,7 @@ export default async function SessionsPage() {
           style={{
             backgroundColor:
               "var(--negative-soft)",
+
             color:
               "var(--negative)",
           }}
@@ -90,18 +104,21 @@ export default async function SessionsPage() {
   }
 
   const typedSessions =
-    (sessions ?? []) as GameSession[];
+    (sessions ??
+      []) as GameSession[];
 
   const activeSession =
     typedSessions.find(
       (session) =>
-        session.status === "active"
+        session.status ===
+        "active"
     );
 
   const completedSessions =
     typedSessions.filter(
       (session) =>
-        session.status === "completed"
+        session.status ===
+        "completed"
     );
 
   const thisMonth =
@@ -155,6 +172,7 @@ export default async function SessionsPage() {
           style={{
             backgroundColor:
               "var(--surface)",
+
             border:
               "1px solid var(--border)",
           }}
@@ -242,6 +260,7 @@ export default async function SessionsPage() {
             style={{
               backgroundColor:
                 "var(--surface)",
+
               border:
                 "1px solid var(--border)",
             }}
@@ -284,6 +303,7 @@ function EmptyActiveSession() {
       style={{
         backgroundColor:
           "var(--surface)",
+
         border:
           "1px solid var(--border)",
       }}
@@ -294,6 +314,7 @@ function EmptyActiveSession() {
           style={{
             backgroundColor:
               "var(--surface-secondary)",
+
             color:
               "var(--foreground-muted)",
           }}
@@ -337,6 +358,7 @@ function EmptyActiveSession() {
           }}
         >
           Start Session
+
           <ArrowRight
             size={15}
           />
@@ -351,12 +373,18 @@ function ActiveSessionCard({
 }: {
   session: GameSession;
 }) {
+  const lendHref =
+    `/quick-add?type=lend&session=${encodeURIComponent(
+      session.id
+    )}`;
+
   return (
     <div
       className="mt-4 overflow-hidden rounded-[var(--radius-lg)]"
       style={{
         backgroundColor:
           "var(--surface)",
+
         border:
           "1px solid var(--border)",
       }}
@@ -449,21 +477,49 @@ function ActiveSessionCard({
         )}
       </div>
 
-      <Link
-        href={`/sessions/${session.id}/finish`}
-        className="flex h-12 items-center justify-end gap-2 border-t px-5 text-sm font-semibold"
+      {/* Active session actions */}
+      <div
+        className="grid grid-cols-2 border-t"
         style={{
           borderColor:
             "var(--border)",
-          color:
-            "var(--primary)",
         }}
       >
-        Finish Session
-        <ArrowRight
-          size={15}
-        />
-      </Link>
+        <Link
+          href={
+            lendHref
+          }
+          className="flex h-12 items-center justify-center gap-2 text-xs font-semibold"
+          style={{
+            color:
+              "var(--primary)",
+          }}
+        >
+          <HandCoins
+            size={15}
+          />
+
+          Lend Money
+        </Link>
+
+        <Link
+          href={`/sessions/${session.id}/finish`}
+          className="flex h-12 items-center justify-center gap-2 border-l text-xs font-semibold"
+          style={{
+            borderColor:
+              "var(--border)",
+
+            color:
+              "var(--primary)",
+          }}
+        >
+          Finish Session
+
+          <ArrowRight
+            size={14}
+          />
+        </Link>
+      </div>
     </div>
   );
 }
@@ -490,6 +546,7 @@ function SessionHistoryGroup({
         style={{
           backgroundColor:
             "var(--surface)",
+
           border:
             "1px solid var(--border)",
         }}
@@ -507,7 +564,8 @@ function SessionHistoryGroup({
                 session
               }
               borderTop={
-                index > 0
+                index >
+                0
               }
             />
           )
@@ -565,7 +623,9 @@ function SessionHistoryRow({
 
         <div className="shrink-0 text-right">
           <SignedMoney
-            value={pnl}
+            value={
+              pnl
+            }
           />
 
           <div className="mt-2 flex justify-end">
@@ -602,21 +662,27 @@ function ResultBadge({
     | "even"
     | null;
 }) {
-  if (!result) {
+  if (
+    !result
+  ) {
     return null;
   }
 
   const background =
-    result === "win"
+    result ===
+    "win"
       ? "var(--positive-soft)"
-      : result === "loss"
+      : result ===
+          "loss"
         ? "var(--negative-soft)"
         : "var(--surface-secondary)";
 
   const color =
-    result === "win"
+    result ===
+    "win"
       ? "var(--positive)"
-      : result === "loss"
+      : result ===
+          "loss"
         ? "var(--negative)"
         : "var(--foreground-muted)";
 
@@ -626,6 +692,7 @@ function ResultBadge({
       style={{
         backgroundColor:
           background,
+
         color,
       }}
     >
@@ -663,7 +730,8 @@ function SummaryMetric({
 function SectionLabel({
   children,
 }: {
-  children: React.ReactNode;
+  children:
+    React.ReactNode;
 }) {
   return (
     <h2
@@ -684,10 +752,12 @@ function SignedMoney({
   value: bigint;
 }) {
   const positive =
-    value > BigInt(0);
+    value >
+    BigInt(0);
 
   const negative =
-    value < BigInt(0);
+    value <
+    BigInt(0);
 
   const absolute =
     negative
@@ -724,7 +794,8 @@ function SignedMoney({
 }
 
 function getSessionPnL(
-  session: GameSession
+  session:
+    GameSession
 ) {
   if (
     session.status !==
@@ -760,7 +831,8 @@ function getSessionPnL(
 }
 
 function groupSessionsByDate(
-  sessions: GameSession[]
+  sessions:
+    GameSession[]
 ) {
   const groups =
     new Map<
@@ -769,7 +841,8 @@ function groupSessionsByDate(
     >();
 
   for (
-    const session of sessions
+    const session
+    of sessions
   ) {
     const dateKey =
       kathmanduDateKey(
@@ -821,12 +894,19 @@ function formatSessionGroupDate(
       timeZone:
         "Asia/Kathmandu",
 
-      month: "short",
-      day: "numeric",
-      year: "numeric",
+      month:
+        "short",
+
+      day:
+        "numeric",
+
+      year:
+        "numeric",
     }
   ).format(
-    new Date(value)
+    new Date(
+      value
+    )
   );
 }
 
@@ -839,13 +919,21 @@ function formatSessionDateTime(
       timeZone:
         "Asia/Kathmandu",
 
-      month: "short",
-      day: "numeric",
+      month:
+        "short",
 
-      hour: "numeric",
-      minute: "2-digit",
+      day:
+        "numeric",
+
+      hour:
+        "numeric",
+
+      minute:
+        "2-digit",
     }
   ).format(
-    new Date(value)
+    new Date(
+      value
+    )
   );
 }

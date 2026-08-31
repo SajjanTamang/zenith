@@ -1,64 +1,103 @@
-import { ActivityList } from "@/components/transactions/activity-list";
-import { buildActivityItems } from "@/lib/activity";
-import { createClient } from "@/lib/supabase/server";
+import {
+  ActivityList,
+} from "@/components/transactions/activity-list";
+
+import {
+  buildActivityItems,
+} from "@/lib/activity";
+
+import {
+  createClient,
+} from "@/lib/supabase/server";
 
 export default async function ActivityPage() {
-  const supabase = await createClient();
+  const supabase =
+    await createClient();
 
   const [
-    {
-      data: accounts,
-      error: accountsError,
-    },
-    {
-      data: transactions,
-      error: transactionsError,
-    },
-    {
-      data: gameSessions,
-      error: gameSessionsError,
-    },
-  ] = await Promise.all([
-    supabase
-      .from("accounts")
-      .select(`
-        id,
-        name
-      `),
+    accountsResult,
+    transactionsResult,
+    gameSessionsResult,
+    loanPeopleResult,
+    loansResult,
+    repaymentsResult,
+  ] =
+    await Promise.all([
+      supabase
+        .from("accounts")
+        .select(`
+          id,
+          name
+        `),
 
-    supabase
-      .from("transactions")
-      .select(`
-        id,
-        transaction_type,
-        amount,
-        category,
-        note,
-        occurred_at,
-        from_account_id,
-        to_account_id
-      `),
+      supabase
+        .from("transactions")
+        .select(`
+          id,
+          transaction_type,
+          amount,
+          category,
+          note,
+          occurred_at,
+          from_account_id,
+          to_account_id
+        `),
 
-    supabase
-      .from("game_sessions")
-      .select(`
-        id,
-        game_type,
-        playing_amount,
-        note,
-        status,
-        result_type,
-        result_amount,
-        started_at,
-        ended_at
-      `),
-  ]);
+      supabase
+        .from("game_sessions")
+        .select(`
+          id,
+          game_type,
+          playing_amount,
+          note,
+          status,
+          result_type,
+          result_amount,
+          started_at,
+          ended_at
+        `),
 
-  if (
-    accountsError ||
-    transactionsError ||
-    gameSessionsError
-  ) {
+      supabase
+        .from("loan_people")
+        .select(`
+          id,
+          name
+        `),
+
+      supabase
+        .from("loans")
+        .select(`
+          id,
+          person_id,
+          source_account_id,
+          principal_amount,
+          game_session_id,
+          note,
+          lent_at,
+          due_date
+        `),
+
+      supabase
+        .from("loan_repayments")
+        .select(`
+          id,
+          loan_id,
+          to_account_id,
+          amount,
+          note,
+          repaid_at
+        `),
+    ]);
+
+  const error =
+    accountsResult.error ??
+    transactionsResult.error ??
+    gameSessionsResult.error ??
+    loanPeopleResult.error ??
+    loansResult.error ??
+    repaymentsResult.error;
+
+  if (error) {
     return (
       <div>
         <p
@@ -80,24 +119,44 @@ export default async function ActivityPage() {
           style={{
             backgroundColor:
               "var(--negative-soft)",
+
             color:
               "var(--negative)",
           }}
         >
-          Could not load activity:{" "}
-          {accountsError?.message ??
-            transactionsError?.message ??
-            gameSessionsError?.message}
+          Could not load
+          activity:{" "}
+          {error.message}
         </div>
       </div>
     );
   }
 
-  const items = buildActivityItems(
-    accounts ?? [],
-    transactions ?? [],
-    gameSessions ?? []
-  );
+  const items =
+    buildActivityItems(
+      accountsResult.data ??
+        [],
+
+      transactionsResult.data ??
+        [],
+
+      gameSessionsResult.data ??
+        [],
+
+      loanPeopleResult.data ??
+        [],
+
+      loansResult.data ??
+        [],
+
+      repaymentsResult.data ??
+        []
+    );
+
+  const todayDateKey =
+    getKathmanduDateKey(
+      new Date()
+    );
 
   return (
     <div>
@@ -122,11 +181,66 @@ export default async function ActivityPage() {
             "var(--foreground-muted)",
         }}
       >
-        Income, expenses, transfers,
-        and game results in one place.
+        Transactions, game
+        results, and lending in
+        one place.
       </p>
 
-      <ActivityList items={items} />
+      <ActivityList
+        items={
+          items
+        }
+        todayDateKey={
+          todayDateKey
+        }
+      />
     </div>
   );
+}
+
+function getKathmanduDateKey(
+  value: Date
+) {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-CA",
+      {
+        timeZone:
+          "Asia/Kathmandu",
+
+        year:
+          "numeric",
+
+        month:
+          "2-digit",
+
+        day:
+          "2-digit",
+      }
+    ).formatToParts(
+      value
+    );
+
+  const year =
+    parts.find(
+      (part) =>
+        part.type ===
+        "year"
+    )?.value;
+
+  const month =
+    parts.find(
+      (part) =>
+        part.type ===
+        "month"
+    )?.value;
+
+  const day =
+    parts.find(
+      (part) =>
+        part.type ===
+        "day"
+    )?.value;
+
+  return `${year}-${month}-${day}`;
 }

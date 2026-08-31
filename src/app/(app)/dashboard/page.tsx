@@ -4,10 +4,14 @@ import {
   ArrowDownLeft,
   ArrowLeftRight,
   ArrowUpRight,
+  ChevronRight,
   Gamepad2,
+  HandCoins,
 } from "lucide-react";
 
-import { PnLCalendar } from "@/components/insights/pnl-calendar";
+import {
+  PnLCalendar,
+} from "@/components/insights/pnl-calendar";
 
 import {
   buildActivityItems,
@@ -18,12 +22,16 @@ import {
 import {
   calculateAccountBalances,
   isInCurrentKathmanduMonth,
+  loanOutstandingBalance,
   totalAccountTypeBalance,
   totalBalanceFromAccounts,
-  totalGamePnL,
+  totalNetWorth,
+  totalOutstandingLoans,
   totalTransactionsByType,
   type FinanceAccount,
   type FinanceGameSession,
+  type FinanceLoan,
+  type FinanceLoanRepayment,
   type FinanceTransaction,
 } from "@/lib/finance";
 
@@ -36,11 +44,14 @@ import {
   formatMoneyFromCents,
 } from "@/lib/money";
 
-import { createClient } from "@/lib/supabase/server";
+import {
+  createClient,
+} from "@/lib/supabase/server";
 
-type DashboardAccount = FinanceAccount & {
-  name: string;
-};
+type DashboardAccount =
+  FinanceAccount & {
+    name: string;
+  };
 
 type DashboardTransaction =
   FinanceTransaction & {
@@ -54,74 +65,146 @@ type DashboardGameSession =
   FinanceGameSession &
     AnalyticsGameSession & {
       id: string;
-      playing_amount: string | number;
+
+      playing_amount:
+        | string
+        | number;
+
       game_type: string;
-      note: string | null;
+
+      note:
+        | string
+        | null;
+
       started_at: string;
-      ended_at: string | null;
+
+      ended_at:
+        | string
+        | null;
     };
+
+type DashboardLoanPerson = {
+  id: string;
+  name: string;
+};
+
+/*
+  FinanceLoan keeps lent_at optional
+  because it is a reusable finance type.
+
+  This Dashboard query explicitly selects
+  lent_at, and the database column is NOT NULL,
+  so we make it required here.
+*/
+type DashboardLoan =
+  FinanceLoan & {
+    lent_at: string;
+  };
+
+/*
+  Same idea for repayments.
+
+  The Dashboard query explicitly selects
+  id and repaid_at, and both exist for
+  every stored repayment.
+*/
+type DashboardLoanRepayment =
+  FinanceLoanRepayment & {
+    id: string;
+    repaid_at: string;
+  };
 
 export default async function DashboardPage() {
   const supabase =
     await createClient();
 
   const [
-    {
-      data: accounts,
-      error: accountsError,
-    },
-    {
-      data: transactions,
-      error: transactionsError,
-    },
-    {
-      data: gameSessions,
-      error: gameSessionsError,
-    },
-  ] = await Promise.all([
-    supabase
-      .from("accounts")
-      .select(`
-        id,
-        name,
-        account_type,
-        opening_balance
-      `),
+    accountsResult,
+    transactionsResult,
+    gameSessionsResult,
+    loanPeopleResult,
+    loansResult,
+    repaymentsResult,
+  ] =
+    await Promise.all([
+      supabase
+        .from("accounts")
+        .select(`
+          id,
+          name,
+          account_type,
+          opening_balance
+        `),
 
-    supabase
-      .from("transactions")
-      .select(`
-        id,
-        transaction_type,
-        amount,
-        from_account_id,
-        to_account_id,
-        category,
-        note,
-        occurred_at
-      `),
+      supabase
+        .from("transactions")
+        .select(`
+          id,
+          transaction_type,
+          amount,
+          from_account_id,
+          to_account_id,
+          category,
+          note,
+          occurred_at
+        `),
 
-    supabase
-      .from("game_sessions")
-      .select(`
-        id,
-        bankroll_account_id,
-        playing_amount,
-        game_type,
-        note,
-        status,
-        result_type,
-        result_amount,
-        started_at,
-        ended_at
-      `),
-  ]);
+      supabase
+        .from("game_sessions")
+        .select(`
+          id,
+          bankroll_account_id,
+          playing_amount,
+          game_type,
+          note,
+          status,
+          result_type,
+          result_amount,
+          started_at,
+          ended_at
+        `),
 
-  if (
-    accountsError ||
-    transactionsError ||
-    gameSessionsError
-  ) {
+      supabase
+        .from("loan_people")
+        .select(`
+          id,
+          name
+        `),
+
+      supabase
+        .from("loans")
+        .select(`
+          id,
+          person_id,
+          source_account_id,
+          principal_amount,
+          game_session_id,
+          note,
+          lent_at,
+          due_date
+        `),
+
+      supabase
+        .from("loan_repayments")
+        .select(`
+          id,
+          loan_id,
+          to_account_id,
+          amount,
+          note,
+          repaid_at
+        `),
+    ]);
+
+  const error =
+    accountsResult.error ??
+    transactionsResult.error ??
+    gameSessionsResult.error ??
+    loanPeopleResult.error ??
+    loansResult.error ??
+    repaymentsResult.error;
+
+  if (error) {
     return (
       <div>
         <p
@@ -143,54 +226,119 @@ export default async function DashboardPage() {
           style={{
             backgroundColor:
               "var(--negative-soft)",
+
             color:
               "var(--negative)",
           }}
         >
-          Could not load dashboard:{" "}
-          {accountsError?.message ??
-            transactionsError?.message ??
-            gameSessionsError?.message}
+          Could not load
+          dashboard:{" "}
+          {error.message}
         </div>
       </div>
     );
   }
 
   const typedAccounts =
-    (accounts ?? []) as DashboardAccount[];
+    (accountsResult.data ??
+      []) as DashboardAccount[];
 
   const typedTransactions =
-    (transactions ??
+    (transactionsResult.data ??
       []) as DashboardTransaction[];
 
   const typedGameSessions =
-    (gameSessions ??
+    (gameSessionsResult.data ??
       []) as DashboardGameSession[];
 
-  /*
-    Current account balances:
+  const typedLoanPeople =
+    (loanPeopleResult.data ??
+      []) as DashboardLoanPerson[];
 
-    Opening balances
+  const typedLoans =
+    (loansResult.data ??
+      []) as DashboardLoan[];
+
+  const typedRepayments =
+    (repaymentsResult.data ??
+      []) as DashboardLoanRepayment[];
+
+  /*
+    Available account balances:
+
+    Opening balance
     + Income
     - Expenses
     +/- Transfers
-    +/- Completed Game P&L
+    +/- Game P&L
+    - Money lent
+    + Loan repayments
   */
   const accountBalances =
     calculateAccountBalances(
       typedAccounts,
       typedTransactions,
-      typedGameSessions
+      typedGameSessions,
+      typedLoans,
+      typedRepayments
     );
 
-  const totalBalance =
+  /*
+    Money currently available
+    inside owned accounts.
+  */
+  const availableBalance =
     totalBalanceFromAccounts(
       accountBalances
     );
 
   /*
-    Current Kathmandu-month
-    regular income.
+    Money currently owed back.
+  */
+  const outstandingLending =
+    totalOutstandingLoans(
+      typedLoans,
+      typedRepayments
+    );
+
+  /*
+    Available money
+    + outstanding lending.
+  */
+  const netWorth =
+    totalNetWorth(
+      accountBalances,
+      typedLoans,
+      typedRepayments
+    );
+
+  /*
+    Lending summary used only when
+    there is currently money owed.
+  */
+  const outstandingLoans =
+    typedLoans.filter(
+      (loan) =>
+        loanOutstandingBalance(
+          loan,
+          typedRepayments
+        ) >
+        BigInt(0)
+    );
+
+  const outstandingLoanCount =
+    outstandingLoans.length;
+
+  const outstandingPeopleCount =
+    new Set(
+      outstandingLoans.map(
+        (loan) =>
+          loan.person_id
+      )
+    ).size;
+
+  /*
+    Current Kathmandu-month income.
   */
   const monthlyIncome =
     totalTransactionsByType(
@@ -206,8 +354,7 @@ export default async function DashboardPage() {
     );
 
   /*
-    Current Kathmandu-month
-    regular expenses.
+    Current Kathmandu-month expenses.
   */
   const monthlyExpenses =
     totalTransactionsByType(
@@ -223,17 +370,7 @@ export default async function DashboardPage() {
     );
 
   /*
-    Lifetime game P&L.
-    This remains separate from
-    regular income and expenses.
-  */
-  const lifetimeGamePnL =
-    totalGamePnL(
-      typedGameSessions
-    );
-
-  /*
-    Current Game Bankroll balance.
+    Current available Game Bankroll.
   */
   const bankroll =
     totalAccountTypeBalance(
@@ -252,14 +389,14 @@ export default async function DashboardPage() {
     );
 
   /*
-    Monthly net movement:
+    Monthly financial movement:
 
     Income
     - Expenses
     + Game P&L
 
-    Transfers are excluded because
-    they do not change total wealth.
+    Loans, repayments and transfers
+    are intentionally excluded.
   */
   const monthlyNetMovement =
     monthlyIncome -
@@ -267,18 +404,31 @@ export default async function DashboardPage() {
     thisMonthGame.totalPnL;
 
   /*
-    Unified financial + game activity.
+    Unified newest-first timeline:
+
+    Income
+    Expenses
+    Transfers
+    Games
+    Loans
+    Repayments
   */
   const recentActivity =
     buildActivityItems(
       typedAccounts,
       typedTransactions,
-      typedGameSessions
-    ).slice(0, 5);
+      typedGameSessions,
+      typedLoanPeople,
+      typedLoans,
+      typedRepayments
+    ).slice(
+      0,
+      5
+    );
 
   return (
     <div>
-      {/* Balance */}
+      {/* Available balance */}
       <section>
         <p
           className="text-[10px] font-medium uppercase tracking-[0.16em]"
@@ -287,7 +437,7 @@ export default async function DashboardPage() {
               "var(--foreground-muted)",
           }}
         >
-          Total balance
+          Available balance
         </p>
 
         <div className="mt-3 flex items-baseline gap-2">
@@ -303,7 +453,7 @@ export default async function DashboardPage() {
 
           <p className="text-[36px] font-semibold leading-none tracking-[-0.045em] tabular-nums">
             {formatMoneyFromCents(
-              totalBalance
+              availableBalance
             )}
           </p>
         </div>
@@ -328,7 +478,7 @@ export default async function DashboardPage() {
         </div>
       </section>
 
-      {/* Metrics */}
+      {/* This month */}
       <section
         className="mt-8 border-t pt-6"
         style={{
@@ -336,7 +486,17 @@ export default async function DashboardPage() {
             "var(--border)",
         }}
       >
-        <div className="grid grid-cols-2 gap-x-8 gap-y-7">
+        <p
+          className="text-[10px] font-medium uppercase tracking-[0.14em]"
+          style={{
+            color:
+              "var(--foreground-muted)",
+          }}
+        >
+          This month
+        </p>
+
+        <div className="mt-5 grid grid-cols-2 gap-x-8 gap-y-7">
           <DashboardMetric
             label="Income"
             value={
@@ -356,17 +516,160 @@ export default async function DashboardPage() {
           <DashboardMetric
             label="Game P&L"
             value={
-              lifetimeGamePnL
+              thisMonthGame.totalPnL
             }
             signed
           />
 
           <DashboardMetric
             label="Bankroll"
-            value={bankroll}
+            value={
+              bankroll
+            }
           />
         </div>
       </section>
+
+      {/*
+        Only show Lending + Net Worth
+        when money is currently owed.
+
+        When outstanding lending is zero:
+
+        Available Balance = Net Worth
+
+        so there is no need to display
+        the same number twice.
+      */}
+      {outstandingLending >
+        BigInt(0) && (
+        <section className="mt-8">
+          <p
+            className="text-[10px] font-medium uppercase tracking-[0.14em]"
+            style={{
+              color:
+                "var(--foreground-muted)",
+            }}
+          >
+            Money
+          </p>
+
+          <div
+            className="mt-4 overflow-hidden rounded-[var(--radius-lg)]"
+            style={{
+              backgroundColor:
+                "var(--surface)",
+
+              border:
+                "1px solid var(--border)",
+            }}
+          >
+            {/* Money lent */}
+            <Link
+              href="/lending"
+              className="flex items-center gap-3 px-4 py-4 transition"
+            >
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-sm)]"
+                style={{
+                  backgroundColor:
+                    "rgba(0, 102, 255, 0.10)",
+
+                  color:
+                    "var(--primary)",
+                }}
+              >
+                <HandCoins
+                  size={17}
+                />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p
+                  className="text-[9px] font-medium uppercase tracking-[0.14em]"
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                >
+                  Money lent out
+                </p>
+
+                <p
+                  className="mt-1 text-base font-semibold tabular-nums"
+                  style={{
+                    color:
+                      "var(--primary)",
+                  }}
+                >
+                  {formatBalance(
+                    outstandingLending
+                  )}
+                </p>
+
+                <p
+                  className="mt-1 text-[9px]"
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                >
+                  {getLendingSummary(
+                    outstandingLoanCount,
+                    outstandingPeopleCount
+                  )}
+                </p>
+              </div>
+
+              <ChevronRight
+                size={15}
+                style={{
+                  color:
+                    "var(--foreground-muted)",
+                }}
+              />
+            </Link>
+
+            {/* Net worth */}
+            <div
+              className="flex items-center justify-between gap-5 px-4 py-4"
+              style={{
+                borderTop:
+                  "1px solid var(--border)",
+              }}
+            >
+              <div className="min-w-0">
+                <p
+                  className="text-[9px] font-medium uppercase tracking-[0.14em]"
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                >
+                  Net worth
+                </p>
+
+                <p
+                  className="mt-1 text-[9px]"
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                >
+                  Available + money
+                  lent out
+                </p>
+              </div>
+
+              <p className="shrink-0 text-base font-semibold tabular-nums">
+                {formatBalance(
+                  netWorth
+                )}
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Calendar */}
       <section
@@ -427,6 +730,7 @@ export default async function DashboardPage() {
             style={{
               backgroundColor:
                 "var(--surface)",
+
               border:
                 "1px solid var(--border)",
             }}
@@ -447,6 +751,7 @@ export default async function DashboardPage() {
             style={{
               backgroundColor:
                 "var(--surface)",
+
               border:
                 "1px solid var(--border)",
             }}
@@ -464,7 +769,8 @@ export default async function DashboardPage() {
                     item
                   }
                   borderTop={
-                    index > 0
+                    index >
+                    0
                   }
                 />
               )
@@ -484,23 +790,27 @@ function DashboardMetric({
 }: {
   label: string;
   value: bigint;
+
   tone?:
     | "positive"
     | "negative";
+
   signed?: boolean;
 }) {
   let color =
     "var(--foreground)";
 
   if (
-    tone === "positive"
+    tone ===
+    "positive"
   ) {
     color =
       "var(--positive)";
   }
 
   if (
-    tone === "negative"
+    tone ===
+    "negative"
   ) {
     color =
       "var(--negative)";
@@ -508,14 +818,16 @@ function DashboardMetric({
 
   if (signed) {
     if (
-      value > BigInt(0)
+      value >
+      BigInt(0)
     ) {
       color =
         "var(--positive)";
     }
 
     if (
-      value < BigInt(0)
+      value <
+      BigInt(0)
     ) {
       color =
         "var(--negative)";
@@ -523,16 +835,19 @@ function DashboardMetric({
   }
 
   const absolute =
-    value < BigInt(0)
+    value <
+    BigInt(0)
       ? -value
       : value;
 
   const prefix =
     signed &&
-    value > BigInt(0)
+    value >
+      BigInt(0)
       ? "+"
       : signed &&
-          value < BigInt(0)
+          value <
+            BigInt(0)
         ? "-"
         : "";
 
@@ -571,10 +886,12 @@ function SignedMoney({
   small?: boolean;
 }) {
   const positive =
-    value > BigInt(0);
+    value >
+    BigInt(0);
 
   const negative =
-    value < BigInt(0);
+    value <
+    BigInt(0);
 
   const absolute =
     negative
@@ -626,17 +943,29 @@ function RecentActivityRow({
       item.amountCents
     );
 
+  /*
+    Lending remains blue.
+
+    Loan/repayment direction is
+    communicated using +/- and arrows,
+    not expense/income colors.
+  */
   const amountColor =
     item.kind ===
-    "transfer"
-      ? "var(--foreground)"
-      : amount >
-          BigInt(0)
-        ? "var(--positive)"
-        : amount <
+      "loan" ||
+    item.kind ===
+      "repayment"
+      ? "var(--primary)"
+      : item.kind ===
+          "transfer"
+        ? "var(--foreground)"
+        : amount >
             BigInt(0)
-          ? "var(--negative)"
-          : "var(--foreground)";
+          ? "var(--positive)"
+          : amount <
+              BigInt(0)
+            ? "var(--negative)"
+            : "var(--foreground)";
 
   return (
     <div
@@ -649,8 +978,12 @@ function RecentActivityRow({
       }}
     >
       <RecentActivityIcon
-        kind={item.kind}
-        amount={amount}
+        kind={
+          item.kind
+        }
+        amount={
+          amount
+        }
       />
 
       <div className="min-w-0 flex-1">
@@ -714,8 +1047,12 @@ function RecentActivityIcon({
   let color =
     "var(--foreground-secondary)";
 
+  /*
+    Income
+  */
   if (
-    kind === "income"
+    kind ===
+    "income"
   ) {
     icon =
       <ArrowDownLeft
@@ -726,8 +1063,12 @@ function RecentActivityIcon({
       "var(--positive)";
   }
 
+  /*
+    Expense
+  */
   if (
-    kind === "expense"
+    kind ===
+    "expense"
   ) {
     icon =
       <ArrowUpRight
@@ -738,8 +1079,12 @@ function RecentActivityIcon({
       "var(--negative)";
   }
 
+  /*
+    Game result
+  */
   if (
-    kind === "game"
+    kind ===
+    "game"
   ) {
     icon =
       <Gamepad2
@@ -747,12 +1092,65 @@ function RecentActivityIcon({
       />;
 
     color =
-      amount > BigInt(0)
+      amount >
+      BigInt(0)
         ? "var(--positive)"
         : amount <
             BigInt(0)
           ? "var(--negative)"
           : "var(--foreground-secondary)";
+  }
+
+  /*
+    Money lent:
+    Hand + outward arrow
+  */
+  if (
+    kind ===
+    "loan"
+  ) {
+    icon = (
+      <div className="relative">
+        <HandCoins
+          size={14}
+        />
+
+        <ArrowUpRight
+          size={8}
+          strokeWidth={2.5}
+          className="absolute -right-2 -top-1"
+        />
+      </div>
+    );
+
+    color =
+      "var(--primary)";
+  }
+
+  /*
+    Repayment:
+    Hand + inward arrow
+  */
+  if (
+    kind ===
+    "repayment"
+  ) {
+    icon = (
+      <div className="relative">
+        <HandCoins
+          size={14}
+        />
+
+        <ArrowDownLeft
+          size={8}
+          strokeWidth={2.5}
+          className="absolute -right-2 -top-1"
+        />
+      </div>
+    );
+
+    color =
+      "var(--primary)";
   }
 
   return (
@@ -761,6 +1159,7 @@ function RecentActivityIcon({
       style={{
         backgroundColor:
           "var(--surface-secondary)",
+
         color,
       }}
     >
@@ -774,20 +1173,52 @@ function formatActivityAmount(
   value: bigint
 ) {
   const absolute =
-    value < BigInt(0)
+    value <
+    BigInt(0)
       ? -value
       : value;
 
+  /*
+    Transfer is neutral.
+  */
   if (
-    kind === "transfer"
+    kind ===
+    "transfer"
   ) {
     return `NPR ${formatMoneyFromCents(
       absolute
     )}`;
   }
 
+  /*
+    Loan:
+    cash left the account.
+  */
   if (
-    value > BigInt(0)
+    kind ===
+    "loan"
+  ) {
+    return `-NPR ${formatMoneyFromCents(
+      absolute
+    )}`;
+  }
+
+  /*
+    Repayment:
+    cash returned.
+  */
+  if (
+    kind ===
+    "repayment"
+  ) {
+    return `+NPR ${formatMoneyFromCents(
+      absolute
+    )}`;
+  }
+
+  if (
+    value >
+    BigInt(0)
   ) {
     return `+NPR ${formatMoneyFromCents(
       value
@@ -795,7 +1226,8 @@ function formatActivityAmount(
   }
 
   if (
-    value < BigInt(0)
+    value <
+    BigInt(0)
   ) {
     return `-NPR ${formatMoneyFromCents(
       absolute
@@ -803,6 +1235,46 @@ function formatActivityAmount(
   }
 
   return "NPR 0.00";
+}
+
+function formatBalance(
+  value: bigint
+) {
+  if (
+    value <
+    BigInt(0)
+  ) {
+    return `-NPR ${formatMoneyFromCents(
+      -value
+    )}`;
+  }
+
+  return `NPR ${formatMoneyFromCents(
+    value
+  )}`;
+}
+
+function getLendingSummary(
+  loanCount: number,
+  peopleCount: number
+) {
+  if (
+    loanCount === 0
+  ) {
+    return "Nobody owes you money";
+  }
+
+  const loanLabel =
+    loanCount === 1
+      ? "loan"
+      : "loans";
+
+  const peopleLabel =
+    peopleCount === 1
+      ? "person"
+      : "people";
+
+  return `${loanCount} ${loanLabel} • ${peopleCount} ${peopleLabel}`;
 }
 
 function formatKathmanduShortDate(
@@ -813,10 +1285,16 @@ function formatKathmanduShortDate(
     {
       timeZone:
         "Asia/Kathmandu",
-      month: "short",
-      day: "numeric",
+
+      month:
+        "short",
+
+      day:
+        "numeric",
     }
   ).format(
-    new Date(value)
+    new Date(
+      value
+    )
   );
 }

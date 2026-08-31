@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   Banknote,
   Gamepad2,
+  HandCoins,
   Landmark,
   Plus,
   Smartphone,
@@ -14,7 +15,11 @@ import { createClient } from "@/lib/supabase/server";
 import {
   calculateAccountBalances,
   totalBalanceFromAccounts,
+  totalNetWorth,
+  totalOutstandingLoans,
   type FinanceGameSession,
+  type FinanceLoan,
+  type FinanceLoanRepayment,
   type FinanceTransaction,
 } from "@/lib/finance";
 
@@ -35,18 +40,11 @@ export default async function AccountsPage() {
     await createClient();
 
   const [
-    {
-      data: accounts,
-      error: accountsError,
-    },
-    {
-      data: transactions,
-      error: transactionsError,
-    },
-    {
-      data: gameSessions,
-      error: gameSessionsError,
-    },
+    accountsResult,
+    transactionsResult,
+    gameSessionsResult,
+    loansResult,
+    repaymentsResult,
   ] = await Promise.all([
     supabase
       .from("accounts")
@@ -57,9 +55,12 @@ export default async function AccountsPage() {
         opening_balance,
         created_at
       `)
-      .order("created_at", {
-        ascending: true,
-      }),
+      .order(
+        "created_at",
+        {
+          ascending: true,
+        }
+      ),
 
     supabase
       .from("transactions")
@@ -81,13 +82,40 @@ export default async function AccountsPage() {
         started_at,
         ended_at
       `),
+
+    supabase
+      .from("loans")
+      .select(`
+        id,
+        person_id,
+        source_account_id,
+        principal_amount,
+        game_session_id,
+        note,
+        lent_at,
+        due_date
+      `),
+
+    supabase
+      .from("loan_repayments")
+      .select(`
+        id,
+        loan_id,
+        to_account_id,
+        amount,
+        note,
+        repaid_at
+      `),
   ]);
 
-  if (
-    accountsError ||
-    transactionsError ||
-    gameSessionsError
-  ) {
+  const error =
+    accountsResult.error ??
+    transactionsResult.error ??
+    gameSessionsResult.error ??
+    loansResult.error ??
+    repaymentsResult.error;
+
+  if (error) {
     return (
       <div>
         <p
@@ -115,45 +143,80 @@ export default async function AccountsPage() {
         >
           Could not load account
           balances:{" "}
-          {accountsError?.message ??
-            transactionsError?.message ??
-            gameSessionsError?.message}
+          {error.message}
         </div>
       </div>
     );
   }
 
   const typedAccounts =
-    (accounts ?? []) as Account[];
+    (accountsResult.data ??
+      []) as Account[];
 
   const typedTransactions =
-    (transactions ??
+    (transactionsResult.data ??
       []) as FinanceTransaction[];
 
   const typedGameSessions =
-    (gameSessions ??
+    (gameSessionsResult.data ??
       []) as FinanceGameSession[];
 
+  const typedLoans =
+    (loansResult.data ??
+      []) as FinanceLoan[];
+
+  const typedRepayments =
+    (repaymentsResult.data ??
+      []) as FinanceLoanRepayment[];
+
   /*
-    Current balance:
+    Available account balances:
 
     Opening balance
     + Income
     - Expenses
-    + Transfers in
-    - Transfers out
-    + / - Game P&L for bankroll accounts
+    +/- Transfers
+    +/- Game P&L
+    - Money lent
+    + Loan repayments
   */
   const accountBalances =
     calculateAccountBalances(
       typedAccounts,
       typedTransactions,
-      typedGameSessions
+      typedGameSessions,
+      typedLoans,
+      typedRepayments
     );
 
-  const totalBalance =
+  /*
+    Available balance is money physically
+    available inside the user's accounts.
+  */
+  const availableBalance =
     totalBalanceFromAccounts(
       accountBalances
+    );
+
+  /*
+    Money currently outside the user's
+    accounts but still owed back to them.
+  */
+  const outstandingLending =
+    totalOutstandingLoans(
+      typedLoans,
+      typedRepayments
+    );
+
+  /*
+    Net worth includes both available money
+    and money that is currently lent out.
+  */
+  const netWorth =
+    totalNetWorth(
+      accountBalances,
+      typedLoans,
+      typedRepayments
     );
 
   return (
@@ -186,7 +249,10 @@ export default async function AccountsPage() {
               "var(--primary-foreground)",
           }}
         >
-          <Plus size={14} />
+          <Plus
+            size={14}
+          />
+
           Add
         </Link>
       </div>
@@ -198,9 +264,9 @@ export default async function AccountsPage() {
             "var(--foreground-muted)",
         }}
       >
-        Cash, bank, wallet, and
-        game bankroll balances in
-        one place.
+        Cash, bank, wallet,
+        game bankroll, and
+        lending in one place.
       </p>
 
       {typedAccounts.length ===
@@ -208,7 +274,7 @@ export default async function AccountsPage() {
         <EmptyAccounts />
       ) : (
         <>
-          {/* Total */}
+          {/* Net worth */}
           <section
             className="mt-8 rounded-[var(--radius-lg)] p-5"
             style={{
@@ -225,29 +291,83 @@ export default async function AccountsPage() {
                   "var(--foreground-muted)",
               }}
             >
-              Total balance
+              Net worth
             </p>
 
             <p className="mt-2 text-3xl font-semibold tracking-[-0.03em] tabular-nums">
               {formatBalance(
-                totalBalance
+                netWorth
               )}
             </p>
 
-            <p
-              className="mt-2 text-[10px]"
+            <div
+              className="mt-5 grid grid-cols-2 gap-4 border-t pt-4"
               style={{
-                color:
-                  "var(--foreground-muted)",
+                borderColor:
+                  "var(--border)",
               }}
             >
-              Across{" "}
-              {typedAccounts.length}{" "}
-              {typedAccounts.length ===
-              1
-                ? "account"
-                : "accounts"}
-            </p>
+              <div>
+                <p
+                  className="text-[9px] font-medium uppercase tracking-[0.12em]"
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                >
+                  Available
+                </p>
+
+                <p className="mt-1 text-sm font-semibold tabular-nums">
+                  {formatBalance(
+                    availableBalance
+                  )}
+                </p>
+              </div>
+
+              <Link
+                href="/lending"
+                className="block"
+              >
+                <p
+                  className="text-[9px] font-medium uppercase tracking-[0.12em]"
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                >
+                  Lent out
+                </p>
+
+                <div className="mt-1 flex items-center gap-1.5">
+                  <HandCoins
+                    size={13}
+                    style={{
+                      color:
+                        outstandingLending >
+                        BigInt(0)
+                          ? "var(--primary)"
+                          : "var(--foreground-muted)",
+                    }}
+                  />
+
+                  <p
+                    className="text-sm font-semibold tabular-nums"
+                    style={{
+                      color:
+                        outstandingLending >
+                        BigInt(0)
+                          ? "var(--primary)"
+                          : "var(--foreground)",
+                    }}
+                  >
+                    {formatBalance(
+                      outstandingLending
+                    )}
+                  </p>
+                </div>
+              </Link>
+            </div>
           </section>
 
           {/* Account list */}
@@ -283,7 +403,8 @@ export default async function AccountsPage() {
                   const currentBalance =
                     accountBalances.get(
                       account.id
-                    ) ?? BigInt(0);
+                    ) ??
+                    BigInt(0);
 
                   return (
                     <AccountCard
@@ -320,7 +441,8 @@ function AccountCard({
     "game_bankroll";
 
   const balanceColor =
-    currentBalance < BigInt(0)
+    currentBalance <
+    BigInt(0)
       ? "var(--negative)"
       : "var(--foreground)";
 
@@ -362,7 +484,8 @@ function AccountCard({
         <p
           className="text-sm font-semibold tabular-nums"
           style={{
-            color: balanceColor,
+            color:
+              balanceColor,
           }}
         >
           {formatBalance(
@@ -381,7 +504,7 @@ function AccountCard({
         >
           {isBankroll
             ? "Current bankroll"
-            : "Current balance"}
+            : "Available balance"}
         </p>
       </div>
     </div>
@@ -394,31 +517,48 @@ function AccountIcon({
   type: string;
 }) {
   let icon =
-    <WalletCards size={17} />;
+    <WalletCards
+      size={17}
+    />;
 
   let color =
     "var(--foreground-secondary)";
 
-  if (type === "cash") {
+  if (
+    type === "cash"
+  ) {
     icon =
-      <Banknote size={17} />;
-  }
-
-  if (type === "bank") {
-    icon =
-      <Landmark size={17} />;
-  }
-
-  if (type === "wallet") {
-    icon =
-      <Smartphone size={17} />;
+      <Banknote
+        size={17}
+      />;
   }
 
   if (
-    type === "game_bankroll"
+    type === "bank"
   ) {
     icon =
-      <Gamepad2 size={17} />;
+      <Landmark
+        size={17}
+      />;
+  }
+
+  if (
+    type === "wallet"
+  ) {
+    icon =
+      <Smartphone
+        size={17}
+      />;
+  }
+
+  if (
+    type ===
+    "game_bankroll"
+  ) {
+    icon =
+      <Gamepad2
+        size={17}
+      />;
 
     color =
       "var(--primary)";
@@ -489,7 +629,10 @@ function EmptyAccounts() {
             "var(--primary-foreground)",
         }}
       >
-        <Plus size={15} />
+        <Plus
+          size={15}
+        />
+
         Add Account
       </Link>
     </div>
@@ -500,7 +643,8 @@ function formatBalance(
   value: bigint
 ) {
   if (
-    value < BigInt(0)
+    value <
+    BigInt(0)
   ) {
     return `-NPR ${formatMoneyFromCents(
       -value
@@ -516,26 +660,40 @@ function formatAccountType(
   type: string
 ) {
   if (
-    type === "game_bankroll"
+    type ===
+    "game_bankroll"
   ) {
     return "Game Bankroll";
   }
 
-  if (type === "cash") {
+  if (
+    type === "cash"
+  ) {
     return "Cash";
   }
 
-  if (type === "bank") {
+  if (
+    type === "bank"
+  ) {
     return "Bank";
   }
 
-  if (type === "wallet") {
+  if (
+    type === "wallet"
+  ) {
     return "Wallet";
   }
 
   return type
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (letter) =>
-      letter.toUpperCase()
+    .replaceAll(
+      "_",
+      " "
+    )
+    .replace(
+      /\b\w/g,
+      (
+        letter
+      ) =>
+        letter.toUpperCase()
     );
 }
