@@ -3,6 +3,7 @@
 import {
   Check,
   Equal,
+  RotateCcw,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
@@ -12,9 +13,13 @@ import {
   type FormEvent,
 } from "react";
 
-import { useRouter } from "next/navigation";
+import {
+  useRouter,
+} from "next/navigation";
 
-import { createClient } from "@/lib/supabase/client";
+import {
+  createClient,
+} from "@/lib/supabase/client";
 
 import {
   formatMoneyFromCents,
@@ -29,53 +34,83 @@ type ResultType =
 export function FinishSessionForm({
   sessionId,
   playingAmount,
+  automaticSettlement,
+  bankrollName,
+  fundingAccountName,
 }: {
   sessionId: string;
-  playingAmount: string | number;
+
+  playingAmount:
+    | string
+    | number;
+
+  automaticSettlement:
+    boolean;
+
+  bankrollName:
+    string;
+
+  fundingAccountName:
+    string | null;
 }) {
-  const router = useRouter();
+  const router =
+    useRouter();
 
   const [
     resultType,
     setResultType,
-  ] = useState<ResultType>("win");
+  ] =
+    useState<ResultType>(
+      "win"
+    );
 
   const [
     resultAmount,
     setResultAmount,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     error,
     setError,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     loading,
     setLoading,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const playingAmountCents =
-    moneyToCents(playingAmount);
+    moneyToCents(
+      playingAmount
+    );
 
   const amount =
-    resultType === "even"
+    resultType ===
+    "even"
       ? BigInt(0)
-      : isPositiveMoney(resultAmount)
+      : isPositiveMoney(
+            resultAmount
+          )
         ? moneyToCents(
             resultAmount.trim()
           )
         : BigInt(0);
 
   const pnl =
-    resultType === "win"
+    resultType ===
+    "win"
       ? amount
-      : resultType === "loss"
+      : resultType ===
+          "loss"
         ? -amount
         : BigInt(0);
 
   async function handleSubmit(
-    event: FormEvent<HTMLFormElement>
+    event:
+      FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
@@ -85,7 +120,8 @@ export function FinishSessionForm({
       "0.00";
 
     if (
-      resultType !== "even"
+      resultType !==
+      "even"
     ) {
       cleanResultAmount =
         resultAmount.trim();
@@ -103,18 +139,13 @@ export function FinishSessionForm({
       }
     }
 
-    /*
-      Playing amount represents the total amount
-      planned for today's session.
-
-      Therefore a loss cannot be larger than the
-      amount available to play with.
-    */
     if (
-      resultType === "loss" &&
+      resultType ===
+        "loss" &&
       moneyToCents(
         cleanResultAmount
-      ) > playingAmountCents
+      ) >
+        playingAmountCents
     ) {
       setError(
         "Loss cannot be greater than today's playing amount."
@@ -123,44 +154,99 @@ export function FinishSessionForm({
       return;
     }
 
-    setLoading(true);
+    setLoading(
+      true
+    );
 
     const supabase =
       createClient();
 
-    const {
-      error: updateError,
-    } = await supabase
-      .from("game_sessions")
-      .update({
-        status: "completed",
+    /*
+      New sessions use the atomic
+      bankroll settlement RPC.
 
-        result_type:
-          resultType,
+      Old sessions created before
+      funding_account_id was added
+      keep the old finish behavior.
+    */
+    if (
+      automaticSettlement
+    ) {
+      const {
+        error:
+          finishError,
+      } =
+        await supabase.rpc(
+          "finish_game_session",
+          {
+            p_session_id:
+              sessionId,
 
-        result_amount:
-          cleanResultAmount,
+            p_result_type:
+              resultType,
 
-        ended_at:
-          new Date().toISOString(),
-      })
-      .eq(
-        "id",
-        sessionId
-      )
-      .eq(
-        "status",
-        "active"
-      );
+            p_result_amount:
+              cleanResultAmount,
+          }
+        );
 
-    if (updateError) {
-      setError(
-        updateError.message
-      );
+      if (
+        finishError
+      ) {
+        setError(
+          finishError.message
+        );
 
-      setLoading(false);
+        setLoading(
+          false
+        );
 
-      return;
+        return;
+      }
+    } else {
+      const {
+        error:
+          updateError,
+      } =
+        await supabase
+          .from(
+            "game_sessions"
+          )
+          .update({
+            status:
+              "completed",
+
+            result_type:
+              resultType,
+
+            result_amount:
+              cleanResultAmount,
+
+            ended_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            "id",
+            sessionId
+          )
+          .eq(
+            "status",
+            "active"
+          );
+
+      if (
+        updateError
+      ) {
+        setError(
+          updateError.message
+        );
+
+        setLoading(
+          false
+        );
+
+        return;
+      }
     }
 
     router.replace(
@@ -171,24 +257,32 @@ export function FinishSessionForm({
   }
 
   function selectResultType(
-    type: ResultType
+    type:
+      ResultType
   ) {
-    setResultType(type);
+    setResultType(
+      type
+    );
 
     setError("");
 
-    if (type === "even") {
-      setResultAmount("");
+    if (
+      type ===
+      "even"
+    ) {
+      setResultAmount(
+        ""
+      );
     }
   }
 
   return (
     <form
-      onSubmit={handleSubmit}
+      onSubmit={
+        handleSubmit
+      }
       className="mt-8"
     >
-      
-
       {/* Result */}
       <section>
         <p
@@ -210,9 +304,12 @@ export function FinishSessionForm({
             label="Win"
             type="win"
             active={
-              resultType === "win"
+              resultType ===
+              "win"
             }
-            disabled={loading}
+            disabled={
+              loading
+            }
             onClick={() =>
               selectResultType(
                 "win"
@@ -224,9 +321,12 @@ export function FinishSessionForm({
             label="Loss"
             type="loss"
             active={
-              resultType === "loss"
+              resultType ===
+              "loss"
             }
-            disabled={loading}
+            disabled={
+              loading
+            }
             onClick={() =>
               selectResultType(
                 "loss"
@@ -238,9 +338,12 @@ export function FinishSessionForm({
             label="Even"
             type="even"
             active={
-              resultType === "even"
+              resultType ===
+              "even"
             }
-            disabled={loading}
+            disabled={
+              loading
+            }
             onClick={() =>
               selectResultType(
                 "even"
@@ -251,13 +354,15 @@ export function FinishSessionForm({
       </section>
 
       {/* Result amount */}
-      {resultType !== "even" && (
+      {resultType !==
+        "even" && (
         <section className="mt-7">
           <label
             htmlFor="result-amount"
             className="text-sm font-medium"
           >
-            {resultType === "win"
+            {resultType ===
+            "win"
               ? "Amount won"
               : "Amount lost"}
           </label>
@@ -269,8 +374,10 @@ export function FinishSessionForm({
                 "var(--foreground-muted)",
             }}
           >
-            Enter only the net{" "}
-            {resultType === "win"
+            Enter only the
+            net{" "}
+            {resultType ===
+            "win"
               ? "profit"
               : "loss"}{" "}
             for the day.
@@ -292,27 +399,37 @@ export function FinishSessionForm({
               type="text"
               inputMode="decimal"
               autoComplete="off"
-              value={resultAmount}
-              onChange={(event) =>
+              value={
+                resultAmount
+              }
+              onChange={(
+                event
+              ) =>
                 setResultAmount(
-                  event.target.value
+                  event.target
+                    .value
                 )
               }
               placeholder="0.00"
-              disabled={loading}
-              className="h-12 w-full rounded-[var(--radius-md)] pl-14 pr-4 text-right text-sm font-semibold tabular-nums outline-none transition disabled:cursor-not-allowed disabled:opacity-60 focus:border-[var(--primary)]"
+              disabled={
+                loading
+              }
+              className="h-12 w-full rounded-[var(--radius-md)] pl-14 pr-4 text-right text-sm font-semibold tabular-nums outline-none disabled:opacity-60 focus:border-[var(--primary)]"
               style={{
                 backgroundColor:
                   "var(--surface)",
+
                 border:
                   "1px solid var(--border)",
+
                 color:
                   "var(--foreground)",
               }}
             />
           </div>
 
-          {resultType === "loss" && (
+          {resultType ===
+            "loss" && (
             <p
               className="mt-2 text-[10px] leading-4"
               style={{
@@ -320,7 +437,8 @@ export function FinishSessionForm({
                   "var(--foreground-muted)",
               }}
             >
-              Maximum loss: NPR{" "}
+              Maximum loss:
+              NPR{" "}
               {formatMoneyFromCents(
                 playingAmountCents
               )}
@@ -329,7 +447,7 @@ export function FinishSessionForm({
         </section>
       )}
 
-      {/* P&L preview */}
+      {/* P&L Preview */}
       <section className="mt-7">
         <div
           className="rounded-[var(--radius-lg)] p-5"
@@ -338,6 +456,7 @@ export function FinishSessionForm({
               getPnlBackground(
                 pnl
               ),
+
             border:
               `1px solid ${getPnlBorder(
                 pnl
@@ -353,7 +472,8 @@ export function FinishSessionForm({
                     "var(--foreground-muted)",
                 }}
               >
-                Today&apos;s P&amp;L
+                Today&apos;s
+                P&amp;L
               </p>
 
               <p
@@ -376,6 +496,7 @@ export function FinishSessionForm({
               style={{
                 backgroundColor:
                   "var(--surface-secondary)",
+
                 color:
                   getPnlColor(
                     pnl
@@ -402,15 +523,91 @@ export function FinishSessionForm({
         </div>
       </section>
 
-      {/* Error */}
+      {/* Automatic Settlement */}
+      {automaticSettlement &&
+        fundingAccountName && (
+        <section
+          className="mt-4 rounded-[var(--radius-lg)] p-4"
+          style={{
+            backgroundColor:
+              "var(--surface)",
+
+            border:
+              "1px solid var(--border)",
+          }}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)]"
+              style={{
+                backgroundColor:
+                  "var(--surface-secondary)",
+
+                color:
+                  "var(--primary)",
+              }}
+            >
+              <RotateCcw
+                size={14}
+              />
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold">
+                Automatic
+                settlement
+              </p>
+
+              <p
+                className="mt-1 text-[10px] leading-4"
+                style={{
+                  color:
+                    "var(--foreground-muted)",
+                }}
+              >
+                After the result
+                is recorded,
+                everything
+                remaining in{" "}
+                <span className="font-semibold">
+                  {
+                    bankrollName
+                  }
+                </span>{" "}
+                returns to{" "}
+                <span className="font-semibold">
+                  {
+                    fundingAccountName
+                  }
+                </span>
+                .
+              </p>
+
+              <p
+                className="mt-2 text-[10px] font-medium"
+                style={{
+                  color:
+                    "var(--primary)",
+                }}
+              >
+                Bankroll ends at
+                NPR 0.00
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {error && (
         <div
           className="mt-4 rounded-[var(--radius-md)] px-4 py-3 text-xs leading-5"
           style={{
             backgroundColor:
               "var(--negative-soft)",
+
             border:
               "1px solid var(--negative)",
+
             color:
               "var(--negative)",
           }}
@@ -419,20 +616,24 @@ export function FinishSessionForm({
         </div>
       )}
 
-      {/* Actions */}
       <div className="mt-6">
         <button
           type="submit"
-          disabled={loading}
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={
+            loading
+          }
+          className="flex h-12 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
           style={{
             backgroundColor:
               "var(--primary)",
+
             color:
               "var(--primary-foreground)",
           }}
         >
-          <Check size={16} />
+          <Check
+            size={16}
+          />
 
           {loading
             ? "Finishing session..."
@@ -441,11 +642,13 @@ export function FinishSessionForm({
 
         <button
           type="button"
-          disabled={loading}
+          disabled={
+            loading
+          }
           onClick={() =>
             router.back()
           }
-          className="mt-2 h-11 w-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-2 h-11 w-full text-sm font-medium disabled:opacity-60"
           style={{
             color:
               "var(--foreground-secondary)",
@@ -472,50 +675,69 @@ function ResultButton({
   onClick: () => void;
 }) {
   const color =
-    type === "win"
+    type ===
+    "win"
       ? "var(--positive)"
-      : type === "loss"
+      : type ===
+          "loss"
         ? "var(--negative)"
         : "var(--foreground-secondary)";
 
   const activeBackground =
-    type === "win"
+    type ===
+    "win"
       ? "var(--positive-soft)"
-      : type === "loss"
+      : type ===
+          "loss"
         ? "var(--negative-soft)"
         : "var(--surface-elevated)";
 
   return (
     <button
       type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="flex h-12 items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+      onClick={
+        onClick
+      }
+      disabled={
+        disabled
+      }
+      className="flex h-12 items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold disabled:opacity-60"
       style={{
         backgroundColor:
           active
             ? activeBackground
             : "var(--surface)",
 
-        border: active
-          ? `1px solid ${color}`
-          : "1px solid var(--border)",
+        border:
+          active
+            ? `1px solid ${color}`
+            : "1px solid var(--border)",
 
-        color: active
-          ? color
-          : "var(--foreground-muted)",
+        color:
+          active
+            ? color
+            : "var(--foreground-muted)",
       }}
     >
-      {type === "win" && (
-        <TrendingUp size={15} />
+      {type ===
+        "win" && (
+        <TrendingUp
+          size={15}
+        />
       )}
 
-      {type === "loss" && (
-        <TrendingDown size={15} />
+      {type ===
+        "loss" && (
+        <TrendingDown
+          size={15}
+        />
       )}
 
-      {type === "even" && (
-        <Equal size={15} />
+      {type ===
+        "even" && (
+        <Equal
+          size={15}
+        />
       )}
 
       {label}
@@ -527,7 +749,8 @@ function formatSignedMoney(
   value: bigint
 ) {
   if (
-    value > BigInt(0)
+    value >
+    BigInt(0)
   ) {
     return `+NPR ${formatMoneyFromCents(
       value
@@ -535,7 +758,8 @@ function formatSignedMoney(
   }
 
   if (
-    value < BigInt(0)
+    value <
+    BigInt(0)
   ) {
     return `-NPR ${formatMoneyFromCents(
       -value
@@ -549,13 +773,15 @@ function getPnlColor(
   value: bigint
 ) {
   if (
-    value > BigInt(0)
+    value >
+    BigInt(0)
   ) {
     return "var(--positive)";
   }
 
   if (
-    value < BigInt(0)
+    value <
+    BigInt(0)
   ) {
     return "var(--negative)";
   }
@@ -567,13 +793,15 @@ function getPnlBackground(
   value: bigint
 ) {
   if (
-    value > BigInt(0)
+    value >
+    BigInt(0)
   ) {
     return "var(--positive-soft)";
   }
 
   if (
-    value < BigInt(0)
+    value <
+    BigInt(0)
   ) {
     return "var(--negative-soft)";
   }
@@ -585,13 +813,15 @@ function getPnlBorder(
   value: bigint
 ) {
   if (
-    value > BigInt(0)
+    value >
+    BigInt(0)
   ) {
     return "var(--positive)";
   }
 
   if (
-    value < BigInt(0)
+    value <
+    BigInt(0)
   ) {
     return "var(--negative)";
   }
@@ -616,6 +846,7 @@ function isPositiveMoney(
   return (
     moneyToCents(
       cleanValue
-    ) > BigInt(0)
+    ) >
+    BigInt(0)
   );
 }

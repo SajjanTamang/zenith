@@ -1,7 +1,10 @@
 "use client";
 
 import {
+  AlertTriangle,
+  ArrowRight,
   Gamepad2,
+  Landmark,
   Play,
   WalletCards,
 } from "lucide-react";
@@ -11,56 +14,135 @@ import {
   type FormEvent,
 } from "react";
 
-import { useRouter } from "next/navigation";
+import {
+  useRouter,
+} from "next/navigation";
 
-import { createClient } from "@/lib/supabase/client";
+import {
+  createClient,
+} from "@/lib/supabase/client";
 
-type BankrollAccount = {
+import {
+  formatMoneyFromCents,
+  moneyToCents,
+} from "@/lib/money";
+
+type AccountOption = {
   id: string;
   name: string;
+  balanceCents: string;
 };
 
 export function SessionForm({
+  fundingAccounts,
   bankrollAccounts,
 }: {
-  bankrollAccounts: BankrollAccount[];
+  fundingAccounts: AccountOption[];
+  bankrollAccounts: AccountOption[];
 }) {
-  const router = useRouter();
+  const router =
+    useRouter();
+
+  const [
+    fundingAccountId,
+    setFundingAccountId,
+  ] =
+    useState(
+      fundingAccounts[0]?.id ??
+        ""
+    );
 
   const [
     bankrollAccountId,
     setBankrollAccountId,
-  ] = useState(
-    bankrollAccounts[0]?.id ?? ""
-  );
+  ] =
+    useState(
+      bankrollAccounts[0]?.id ??
+        ""
+    );
 
   const [
     playingAmount,
     setPlayingAmount,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     gameType,
     setGameType,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     note,
     setNote,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     error,
     setError,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     loading,
     setLoading,
-  ] = useState(false);
+  ] =
+    useState(false);
+
+  const selectedFunding =
+    fundingAccounts.find(
+      (account) =>
+        account.id ===
+        fundingAccountId
+    );
+
+  const selectedBankroll =
+    bankrollAccounts.find(
+      (account) =>
+        account.id ===
+        bankrollAccountId
+    );
+
+  const fundingBalance =
+    selectedFunding
+      ? BigInt(
+          selectedFunding.balanceCents
+        )
+      : BigInt(0);
+
+  const bankrollBalance =
+    selectedBankroll
+      ? BigInt(
+          selectedBankroll.balanceCents
+        )
+      : BigInt(0);
+
+  const validPlayingAmount =
+    isPositiveMoney(
+      playingAmount
+    );
+
+  const playingAmountCents =
+    validPlayingAmount
+      ? moneyToCents(
+          playingAmount.trim()
+        )
+      : BigInt(0);
+
+  const sourceShortfall =
+    validPlayingAmount &&
+    playingAmountCents >
+      fundingBalance;
+
+  const bankrollNeedsSettlement =
+    bankrollBalance !==
+    BigInt(0);
 
   async function handleSubmit(
-    event: FormEvent<HTMLFormElement>
+    event:
+      FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
@@ -72,9 +154,21 @@ export function SessionForm({
     const cleanGameType =
       gameType.trim();
 
-    if (!bankrollAccountId) {
+    if (
+      !fundingAccountId
+    ) {
       setError(
-        "Select a bankroll account."
+        "Select the account that will fund today's game."
+      );
+
+      return;
+    }
+
+    if (
+      !bankrollAccountId
+    ) {
+      setError(
+        "Select a Game Bankroll."
       );
 
       return;
@@ -92,7 +186,33 @@ export function SessionForm({
       return;
     }
 
-    if (!cleanGameType) {
+    if (
+      bankrollBalance !==
+      BigInt(0)
+    ) {
+      setError(
+        "The selected Game Bankroll must be NPR 0.00 before starting a new session."
+      );
+
+      return;
+    }
+
+    if (
+      moneyToCents(
+        cleanAmount
+      ) >
+      fundingBalance
+    ) {
+      setError(
+        "The funding account does not have enough available money."
+      );
+
+      return;
+    }
+
+    if (
+      !cleanGameType
+    ) {
       setError(
         "Enter the game type."
       );
@@ -105,29 +225,43 @@ export function SessionForm({
     const supabase =
       createClient();
 
+    /*
+      One atomic database operation:
+
+      1. Create active session
+      2. Transfer funding account -> bankroll
+      3. Remember the original funding account
+    */
     const {
-      error: insertError,
-    } = await supabase
-      .from("game_sessions")
-      .insert({
-        bankroll_account_id:
-          bankrollAccountId,
+      error:
+        startError,
+    } =
+      await supabase.rpc(
+        "start_game_session",
+        {
+          p_funding_account_id:
+            fundingAccountId,
 
-        playing_amount:
-          cleanAmount,
+          p_bankroll_account_id:
+            bankrollAccountId,
 
-        game_type:
-          cleanGameType,
+          p_playing_amount:
+            cleanAmount,
 
-        note:
-          note.trim() || null,
+          p_game_type:
+            cleanGameType,
 
-        status: "active",
-      });
+          p_note:
+            note.trim() ||
+            null,
+        }
+      );
 
-    if (insertError) {
+    if (
+      startError
+    ) {
       setError(
-        insertError.message
+        startError.message
       );
 
       setLoading(false);
@@ -143,73 +277,141 @@ export function SessionForm({
   }
 
   if (
-    bankrollAccounts.length === 0
+    bankrollAccounts.length ===
+    0
   ) {
     return (
-      <div
-        className="mt-8 rounded-[var(--radius-lg)] p-6"
-        style={{
-          backgroundColor:
-            "var(--surface)",
-          border:
-            "1px solid var(--border)",
-        }}
-      >
-        <div className="flex items-start gap-4">
-          <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-            style={{
-              backgroundColor:
-                "var(--surface-secondary)",
-              color:
-                "var(--foreground-muted)",
-            }}
-          >
-            <WalletCards
-              size={17}
-            />
-          </div>
+      <EmptyState
+        title="No Game Bankroll"
+        description="Create a Game Bankroll account before starting a session."
+      />
+    );
+  }
 
-          <div>
-            <p className="text-sm font-semibold">
-              No Game Bankroll
-            </p>
-
-            <p
-              className="mt-1 text-xs leading-5"
-              style={{
-                color:
-                  "var(--foreground-muted)",
-              }}
-            >
-              Create a Game
-              Bankroll account
-              before starting a
-              session.
-            </p>
-          </div>
-        </div>
-      </div>
+  if (
+    fundingAccounts.length ===
+    0
+  ) {
+    return (
+      <EmptyState
+        title="No Funding Account"
+        description="Create a Bank, Cash, Wallet, or Other account before starting a session."
+      />
     );
   }
 
   return (
     <form
-      onSubmit={handleSubmit}
+      onSubmit={
+        handleSubmit
+      }
       className="mt-8"
     >
-      {/* Main form card */}
       <div
         className="overflow-hidden rounded-[var(--radius-lg)]"
         style={{
           backgroundColor:
             "var(--surface)",
+
           border:
             "1px solid var(--border)",
         }}
       >
-        {/* Bankroll */}
+        {/* Fund from */}
         <FormSection>
+          <div className="flex items-start gap-3">
+            <FieldIcon>
+              <Landmark
+                size={16}
+              />
+            </FieldIcon>
+
+            <div className="min-w-0 flex-1">
+              <label
+                htmlFor="funding-account"
+                className="block text-sm font-medium"
+              >
+                Fund from
+              </label>
+
+              <p
+                className="mt-1 text-xs leading-5"
+                style={{
+                  color:
+                    "var(--foreground-muted)",
+                }}
+              >
+                Where today&apos;s
+                playing money comes
+                from.
+              </p>
+
+              <select
+                id="funding-account"
+                value={
+                  fundingAccountId
+                }
+                onChange={(
+                  event
+                ) => {
+                  setFundingAccountId(
+                    event.target
+                      .value
+                  );
+
+                  setError(
+                    ""
+                  );
+                }}
+                disabled={
+                  loading
+                }
+                className="mt-4 h-11 w-full rounded-[var(--radius-md)] px-3 text-sm outline-none disabled:opacity-60 focus:border-[var(--primary)]"
+                style={{
+                  backgroundColor:
+                    "var(--surface-secondary)",
+
+                  border:
+                    "1px solid var(--border)",
+
+                  color:
+                    "var(--foreground)",
+                }}
+              >
+                {fundingAccounts.map(
+                  (
+                    account
+                  ) => (
+                    <option
+                      key={
+                        account.id
+                      }
+                      value={
+                        account.id
+                      }
+                    >
+                      {
+                        account.name
+                      }
+                    </option>
+                  )
+                )}
+              </select>
+
+              <BalanceRow
+                label="Available"
+                value={
+                  fundingBalance
+                }
+              />
+            </div>
+          </div>
+        </FormSection>
+
+        {/* Bankroll */}
+        <FormSection
+          borderTop
+        >
           <div className="flex items-start gap-3">
             <FieldIcon>
               <WalletCards
@@ -222,19 +424,18 @@ export function SessionForm({
                 htmlFor="bankroll"
                 className="block text-sm font-medium"
               >
-                Bankroll
+                Game Bankroll
               </label>
 
               <p
-                className="mt-1 text-xs"
+                className="mt-1 text-xs leading-5"
                 style={{
                   color:
                     "var(--foreground-muted)",
                 }}
               >
-                Account used for
-                game profit and
-                loss.
+                Temporary pot for
+                today&apos;s game.
               </p>
 
               <select
@@ -244,21 +445,27 @@ export function SessionForm({
                 }
                 onChange={(
                   event
-                ) =>
+                ) => {
                   setBankrollAccountId(
                     event.target
                       .value
-                  )
-                }
+                  );
+
+                  setError(
+                    ""
+                  );
+                }}
                 disabled={
                   loading
                 }
-                className="mt-4 h-11 w-full rounded-[var(--radius-md)] px-3 text-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-60 focus:border-[var(--primary)]"
+                className="mt-4 h-11 w-full rounded-[var(--radius-md)] px-3 text-sm outline-none disabled:opacity-60 focus:border-[var(--primary)]"
                 style={{
                   backgroundColor:
                     "var(--surface-secondary)",
+
                   border:
                     "1px solid var(--border)",
+
                   color:
                     "var(--foreground)",
                 }}
@@ -282,15 +489,63 @@ export function SessionForm({
                   )
                 )}
               </select>
+
+              <BalanceRow
+                label="Current bankroll"
+                value={
+                  bankrollBalance
+                }
+              />
+
+              {bankrollNeedsSettlement && (
+                <div
+                  className="mt-3 flex items-start gap-2 rounded-[var(--radius-md)] p-3"
+                  style={{
+                    backgroundColor:
+                      "var(--negative-soft)",
+
+                    border:
+                      "1px solid var(--negative)",
+                  }}
+                >
+                  <AlertTriangle
+                    size={14}
+                    className="mt-0.5 shrink-0"
+                    style={{
+                      color:
+                        "var(--negative)",
+                    }}
+                  />
+
+                  <p
+                    className="text-[10px] leading-4"
+                    style={{
+                      color:
+                        "var(--negative)",
+                    }}
+                  >
+                    New sessions
+                    start with a
+                    zero bankroll.
+                    Settle this
+                    bankroll before
+                    starting.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </FormSection>
 
         {/* Playing amount */}
-        <FormSection borderTop>
+        <FormSection
+          borderTop
+        >
           <div className="flex items-start gap-3">
             <FieldIcon>
-              <Play size={16} />
+              <Play
+                size={16}
+              />
             </FieldIcon>
 
             <div className="min-w-0 flex-1">
@@ -308,9 +563,9 @@ export function SessionForm({
                     "var(--foreground-muted)",
                 }}
               >
-                How much you plan
-                to play with
-                today.
+                Amount moved into
+                today&apos;s
+                bankroll.
               </p>
 
               <div className="relative mt-4">
@@ -334,48 +589,128 @@ export function SessionForm({
                   }
                   onChange={(
                     event
-                  ) =>
+                  ) => {
                     setPlayingAmount(
                       event.target
                         .value
-                    )
-                  }
+                    );
+
+                    setError(
+                      ""
+                    );
+                  }}
                   placeholder="0.00"
                   disabled={
                     loading
                   }
-                  className="h-11 w-full rounded-[var(--radius-md)] pl-12 pr-3 text-right text-sm font-medium tabular-nums outline-none transition disabled:cursor-not-allowed disabled:opacity-60 focus:border-[var(--primary)]"
+                  className="h-11 w-full rounded-[var(--radius-md)] pl-12 pr-3 text-right text-sm font-medium tabular-nums outline-none disabled:opacity-60 focus:border-[var(--primary)]"
                   style={{
                     backgroundColor:
                       "var(--surface-secondary)",
+
                     border:
                       "1px solid var(--border)",
+
                     color:
                       "var(--foreground)",
                   }}
                 />
               </div>
 
+              {sourceShortfall && (
+                <p
+                  className="mt-2 text-[10px] leading-4"
+                  style={{
+                    color:
+                      "var(--negative)",
+                  }}
+                >
+                  Not enough money
+                  in{" "}
+                  {selectedFunding?.name ??
+                    "the funding account"}.
+                </p>
+              )}
+            </div>
+          </div>
+        </FormSection>
+
+        {/* Transfer preview */}
+        {validPlayingAmount &&
+          !bankrollNeedsSettlement &&
+          !sourceShortfall && (
+            <FormSection
+              borderTop
+            >
               <p
-                className="mt-2 text-[10px] leading-4"
+                className="text-[9px] font-medium uppercase tracking-[0.14em]"
                 style={{
                   color:
                     "var(--foreground-muted)",
                 }}
               >
-                This does not
-                change your
-                balance and is
-                not counted as
-                income or an
+                Session funding
+              </p>
+
+              <div className="mt-3 flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-semibold">
+                    {
+                      selectedFunding
+                        ?.name
+                    }
+                  </p>
+                </div>
+
+                <ArrowRight
+                  size={14}
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                />
+
+                <div className="min-w-0 flex-1 text-right">
+                  <p className="truncate text-xs font-semibold">
+                    {
+                      selectedBankroll
+                        ?.name
+                    }
+                  </p>
+                </div>
+              </div>
+
+              <p
+                className="mt-3 text-center text-sm font-semibold tabular-nums"
+                style={{
+                  color:
+                    "var(--primary)",
+                }}
+              >
+                NPR{" "}
+                {formatMoneyFromCents(
+                  playingAmountCents
+                )}
+              </p>
+
+              <p
+                className="mt-2 text-center text-[9px]"
+                style={{
+                  color:
+                    "var(--foreground-muted)",
+                }}
+              >
+                Transfer only —
+                not income or an
                 expense.
               </p>
-            </div>
-          </div>
-        </FormSection>
+            </FormSection>
+          )}
 
         {/* Game type */}
-        <FormSection borderTop>
+        <FormSection
+          borderTop
+        >
           <div className="flex items-start gap-3">
             <FieldIcon>
               <Gamepad2
@@ -410,12 +745,14 @@ export function SessionForm({
                 disabled={
                   loading
                 }
-                className="mt-4 h-11 w-full rounded-[var(--radius-md)] px-3 text-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-60 focus:border-[var(--primary)]"
+                className="mt-4 h-11 w-full rounded-[var(--radius-md)] px-3 text-sm outline-none disabled:opacity-60 focus:border-[var(--primary)]"
                 style={{
                   backgroundColor:
                     "var(--surface-secondary)",
+
                   border:
                     "1px solid var(--border)",
+
                   color:
                     "var(--foreground)",
                 }}
@@ -425,9 +762,11 @@ export function SessionForm({
         </FormSection>
 
         {/* Note */}
-        <FormSection borderTop>
+        <FormSection
+          borderTop
+        >
           <div>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center justify-between">
               <label
                 htmlFor="note"
                 className="text-sm font-medium"
@@ -448,7 +787,9 @@ export function SessionForm({
 
             <textarea
               id="note"
-              value={note}
+              value={
+                note
+              }
               onChange={(
                 event
               ) =>
@@ -458,16 +799,18 @@ export function SessionForm({
                 )
               }
               rows={3}
-              placeholder="Anything you want to remember about today's session..."
+              placeholder="Anything you want to remember..."
               disabled={
                 loading
               }
-              className="mt-3 w-full resize-none rounded-[var(--radius-md)] p-3 text-sm leading-5 outline-none transition disabled:cursor-not-allowed disabled:opacity-60 focus:border-[var(--primary)]"
+              className="mt-3 w-full resize-none rounded-[var(--radius-md)] p-3 text-sm leading-5 outline-none disabled:opacity-60 focus:border-[var(--primary)]"
               style={{
                 backgroundColor:
                   "var(--surface-secondary)",
+
                 border:
                   "1px solid var(--border)",
+
                 color:
                   "var(--foreground)",
               }}
@@ -476,15 +819,16 @@ export function SessionForm({
         </FormSection>
       </div>
 
-      {/* Error */}
       {error && (
         <div
           className="mt-4 rounded-[var(--radius-md)] px-4 py-3 text-xs leading-5"
           style={{
             backgroundColor:
               "var(--negative-soft)",
+
             border:
               "1px solid var(--negative)",
+
             color:
               "var(--negative)",
           }}
@@ -493,33 +837,41 @@ export function SessionForm({
         </div>
       )}
 
-      {/* Actions */}
       <div className="mt-6">
         <button
           type="submit"
-          disabled={loading}
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={
+            loading ||
+            bankrollNeedsSettlement ||
+            sourceShortfall
+          }
+          className="flex h-12 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
           style={{
             backgroundColor:
               "var(--primary)",
+
             color:
               "var(--primary-foreground)",
           }}
         >
-          <Play size={15} />
+          <Play
+            size={15}
+          />
 
           {loading
             ? "Starting session..."
-            : "Start Session"}
+            : "Fund & Start Session"}
         </button>
 
         <button
           type="button"
-          disabled={loading}
+          disabled={
+            loading
+          }
           onClick={() =>
             router.back()
           }
-          className="mt-2 h-11 w-full text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-2 h-11 w-full text-sm font-medium disabled:opacity-60"
           style={{
             color:
               "var(--foreground-secondary)",
@@ -567,6 +919,7 @@ function FieldIcon({
       style={{
         backgroundColor:
           "var(--surface-secondary)",
+
         color:
           "var(--foreground-secondary)",
       }}
@@ -576,31 +929,123 @@ function FieldIcon({
   );
 }
 
+function BalanceRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: bigint;
+}) {
+  return (
+    <div className="mt-3 flex items-center justify-between gap-4">
+      <span
+        className="text-[10px]"
+        style={{
+          color:
+            "var(--foreground-muted)",
+        }}
+      >
+        {label}
+      </span>
+
+      <span
+        className="text-xs font-semibold tabular-nums"
+        style={{
+          color:
+            value <
+            BigInt(0)
+              ? "var(--negative)"
+              : "var(--foreground)",
+        }}
+      >
+        {formatBalance(
+          value
+        )}
+      </span>
+    </div>
+  );
+}
+
+function EmptyState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div
+      className="mt-8 rounded-[var(--radius-lg)] p-6"
+      style={{
+        backgroundColor:
+          "var(--surface)",
+
+        border:
+          "1px solid var(--border)",
+      }}
+    >
+      <div className="flex items-start gap-4">
+        <FieldIcon>
+          <WalletCards
+            size={17}
+          />
+        </FieldIcon>
+
+        <div>
+          <p className="text-sm font-semibold">
+            {title}
+          </p>
+
+          <p
+            className="mt-1 text-xs leading-5"
+            style={{
+              color:
+                "var(--foreground-muted)",
+            }}
+          >
+            {description}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatBalance(
+  value: bigint
+) {
+  if (
+    value <
+    BigInt(0)
+  ) {
+    return `-NPR ${formatMoneyFromCents(
+      -value
+    )}`;
+  }
+
+  return `NPR ${formatMoneyFromCents(
+    value
+  )}`;
+}
+
 function isPositiveMoney(
   value: string
 ) {
+  const cleanValue =
+    value.trim();
+
   if (
     !/^\d+(\.\d{1,2})?$/.test(
-      value
+      cleanValue
     )
   ) {
     return false;
   }
 
-  const [
-    wholePart,
-    decimalPart = "",
-  ] = value.split(".");
-
-  const cents =
-    BigInt(wholePart) *
-      BigInt(100) +
-    BigInt(
-      decimalPart.padEnd(
-        2,
-        "0"
-      )
-    );
-
-  return cents > BigInt(0);
+  return (
+    moneyToCents(
+      cleanValue
+    ) >
+    BigInt(0)
+  );
 }
