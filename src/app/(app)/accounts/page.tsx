@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import {
+  Archive,
   Banknote,
   ChevronRight,
   Gamepad2,
@@ -35,6 +36,7 @@ type Account = {
   name: string;
   account_type: string;
   opening_balance: string | number;
+  archived_at: string | null;
   created_at: string;
 };
 
@@ -59,6 +61,7 @@ export default async function AccountsPage() {
           name,
           account_type,
           opening_balance,
+          archived_at,
           created_at
         `)
         .order(
@@ -167,33 +170,60 @@ export default async function AccountsPage() {
     );
   }
 
-  const typedAccounts =
+  const accounts =
     (accountsResult.data ??
       []) as Account[];
 
-  const typedTransactions =
+  const transactions =
     (transactionsResult.data ??
       []) as FinanceTransaction[];
 
-  const typedGameSessions =
+  const gameSessions =
     (gameSessionsResult.data ??
       []) as FinanceGameSession[];
 
-  const typedLoans =
+  const loans =
     (loansResult.data ??
       []) as FinanceLoan[];
 
-  const typedRepayments =
+  const repayments =
     (repaymentsResult.data ??
       []) as FinanceLoanRepayment[];
 
+  const activeAccounts =
+    accounts.filter(
+      (
+        account
+      ) =>
+        account.archived_at ===
+        null
+    );
+
+  const archivedAccounts =
+    accounts.filter(
+      (
+        account
+      ) =>
+        account.archived_at !==
+        null
+    );
+
+  /*
+    IMPORTANT:
+
+    Balance calculations continue
+    using ALL accounts.
+
+    Archived accounts still exist
+    historically.
+  */
   const accountBalances =
     calculateAccountBalances(
-      typedAccounts,
-      typedTransactions,
-      typedGameSessions,
-      typedLoans,
-      typedRepayments
+      accounts,
+      transactions,
+      gameSessions,
+      loans,
+      repayments
     );
 
   const availableBalance =
@@ -203,20 +233,19 @@ export default async function AccountsPage() {
 
   const outstandingLending =
     totalOutstandingLoans(
-      typedLoans,
-      typedRepayments
+      loans,
+      repayments
     );
 
   const netWorth =
     totalNetWorth(
       accountBalances,
-      typedLoans,
-      typedRepayments
+      loans,
+      repayments
     );
 
   return (
     <div>
-      {/* Header */}
       <div className="flex items-end justify-between gap-4">
         <div>
           <p
@@ -265,12 +294,11 @@ export default async function AccountsPage() {
         lending in one place.
       </p>
 
-      {typedAccounts.length ===
+      {accounts.length ===
       0 ? (
         <EmptyAccounts />
       ) : (
         <>
-          {/* Net worth */}
           <section
             className="mt-8 rounded-[var(--radius-lg)] p-5"
             style={{
@@ -367,7 +395,6 @@ export default async function AccountsPage() {
             </div>
           </section>
 
-          {/* Accounts */}
           <section className="mt-8">
             <div className="flex items-center justify-between">
               <h2
@@ -388,24 +415,46 @@ export default async function AccountsPage() {
                 }}
               >
                 {
-                  typedAccounts.length
+                  activeAccounts.length
                 }{" "}
-                total
+                active
               </span>
             </div>
 
-            <div className="mt-3 space-y-2">
-              {typedAccounts.map(
-                (
-                  account
-                ) => {
-                  const currentBalance =
-                    accountBalances.get(
-                      account.id
-                    ) ??
-                    BigInt(0);
+            {activeAccounts.length ===
+            0 ? (
+              <div
+                className="mt-3 rounded-[var(--radius-lg)] px-5 py-8 text-center"
+                style={{
+                  backgroundColor:
+                    "var(--surface)",
 
-                  return (
+                  border:
+                    "1px solid var(--border)",
+                }}
+              >
+                <p className="text-sm font-semibold">
+                  No active accounts
+                </p>
+
+                <p
+                  className="mt-2 text-xs"
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                >
+                  Restore an archived
+                  account or add a new
+                  one.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {activeAccounts.map(
+                  (
+                    account
+                  ) => (
                     <AccountCard
                       key={
                         account.id
@@ -414,14 +463,74 @@ export default async function AccountsPage() {
                         account
                       }
                       currentBalance={
-                        currentBalance
+                        accountBalances.get(
+                          account.id
+                        ) ??
+                        BigInt(0)
+                      }
+                      archived={
+                        false
                       }
                     />
-                  );
-                }
-              )}
-            </div>
+                  )
+                )}
+              </div>
+            )}
           </section>
+
+          {archivedAccounts.length >
+            0 && (
+            <section className="mt-8">
+              <div className="flex items-center justify-between">
+                <h2
+                  className="text-[10px] font-medium uppercase tracking-[0.14em]"
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                >
+                  Archived
+                </h2>
+
+                <span
+                  className="text-[10px]"
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                >
+                  {
+                    archivedAccounts.length
+                  }{" "}
+                  archived
+                </span>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {archivedAccounts.map(
+                  (
+                    account
+                  ) => (
+                    <AccountCard
+                      key={
+                        account.id
+                      }
+                      account={
+                        account
+                      }
+                      currentBalance={
+                        accountBalances.get(
+                          account.id
+                        ) ??
+                        BigInt(0)
+                      }
+                      archived
+                    />
+                  )
+                )}
+              </div>
+            </section>
+          )}
         </>
       )}
     </div>
@@ -431,9 +540,11 @@ export default async function AccountsPage() {
 function AccountCard({
   account,
   currentBalance,
+  archived,
 }: {
   account: Account;
   currentBalance: bigint;
+  archived: boolean;
 }) {
   const isBankroll =
     account.account_type ===
@@ -443,7 +554,9 @@ function AccountCard({
     currentBalance <
     BigInt(0)
       ? "var(--negative)"
-      : "var(--foreground)";
+      : archived
+        ? "var(--foreground-muted)"
+        : "var(--foreground)";
 
   return (
     <Link
@@ -457,13 +570,35 @@ function AccountCard({
 
         border:
           "1px solid var(--border)",
+
+        opacity:
+          archived
+            ? 0.7
+            : 1,
       }}
     >
-      <AccountIcon
-        type={
-          account.account_type
-        }
-      />
+      {archived ? (
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-sm)]"
+          style={{
+            backgroundColor:
+              "var(--surface-secondary)",
+
+            color:
+              "var(--foreground-muted)",
+          }}
+        >
+          <Archive
+            size={17}
+          />
+        </div>
+      ) : (
+        <AccountIcon
+          type={
+            account.account_type
+          }
+        />
+      )}
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">
@@ -477,9 +612,13 @@ function AccountCard({
               "var(--foreground-muted)",
           }}
         >
-          {formatAccountType(
-            account.account_type
-          )}
+          {archived
+            ? `${formatAccountType(
+                account.account_type
+              )} • Archived`
+            : formatAccountType(
+                account.account_type
+              )}
         </p>
       </div>
 
@@ -500,14 +639,18 @@ function AccountCard({
           className="mt-1 text-[10px]"
           style={{
             color:
-              isBankroll
-                ? "var(--primary)"
-                : "var(--foreground-muted)",
+              archived
+                ? "var(--foreground-muted)"
+                : isBankroll
+                  ? "var(--primary)"
+                  : "var(--foreground-muted)",
           }}
         >
-          {isBankroll
-            ? "Current bankroll"
-            : "Available balance"}
+          {archived
+            ? "Archived"
+            : isBankroll
+              ? "Current bankroll"
+              : "Available balance"}
         </p>
       </div>
 

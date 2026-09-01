@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
-  Clock3,
   HandCoins,
   RotateCcw,
   StickyNote,
@@ -37,9 +36,10 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
-type Loan = FinanceLoan & {
-  lent_at: string;
-};
+type Loan =
+  FinanceLoan & {
+    lent_at: string;
+  };
 
 type Person = {
   id: string;
@@ -49,6 +49,10 @@ type Person = {
 type Account = {
   id: string;
   name: string;
+
+  archived_at:
+    | string
+    | null;
 };
 
 type GameSession = {
@@ -81,7 +85,9 @@ export default async function LoanDetailPage({
   ] =
     await Promise.all([
       supabase
-        .from("loans")
+        .from(
+          "loans"
+        )
         .select(`
           id,
           person_id,
@@ -131,11 +137,21 @@ export default async function LoanDetailPage({
           name
         `),
 
+      /*
+        Keep ALL accounts here.
+
+        Historical loans and repayments
+        may reference an archived account,
+        so we still need its name.
+      */
       supabase
-        .from("accounts")
+        .from(
+          "accounts"
+        )
         .select(`
           id,
-          name
+          name,
+          archived_at
         `)
         .order(
           "created_at",
@@ -165,6 +181,7 @@ export default async function LoanDetailPage({
           <ArrowLeft
             size={14}
           />
+
           Lending
         </Link>
 
@@ -177,12 +194,12 @@ export default async function LoanDetailPage({
           style={{
             backgroundColor:
               "var(--negative-soft)",
+
             color:
               "var(--negative)",
           }}
         >
-          Could not load loan:
-          {" "}
+          Could not load loan:{" "}
           {loanResult.error
             ?.message ??
             repaymentsResult.error
@@ -213,9 +230,38 @@ export default async function LoanDetailPage({
     (peopleResult.data ??
       []) as Person[];
 
+  /*
+    ALL accounts remain available
+    for historical display.
+  */
   const accounts =
     (accountsResult.data ??
       []) as Account[];
+
+  /*
+    Only ACTIVE accounts may receive
+    a NEW repayment.
+  */
+  const repaymentAccounts =
+    accounts
+      .filter(
+        (
+          account
+        ) =>
+          account.archived_at ===
+          null
+      )
+      .map(
+        (
+          account
+        ) => ({
+          id:
+            account.id,
+
+          name:
+            account.name,
+        })
+      );
 
   const person =
     people.find(
@@ -327,6 +373,10 @@ export default async function LoanDetailPage({
           ? "rgba(0, 102, 255, 0.10)"
           : "var(--surface-secondary)";
 
+  /*
+    Uses ALL accounts so older repayment
+    history still shows the correct name.
+  */
   const accountNames =
     new Map(
       accounts.map(
@@ -393,6 +443,7 @@ export default async function LoanDetailPage({
         style={{
           backgroundColor:
             "var(--surface)",
+
           border:
             "1px solid var(--border)",
         }}
@@ -433,6 +484,7 @@ export default async function LoanDetailPage({
               style={{
                 backgroundColor:
                   statusBackground,
+
                 color:
                   statusColor,
               }}
@@ -493,6 +545,7 @@ export default async function LoanDetailPage({
           style={{
             backgroundColor:
               "var(--surface)",
+
             border:
               "1px solid var(--border)",
           }}
@@ -585,6 +638,7 @@ export default async function LoanDetailPage({
             style={{
               backgroundColor:
                 "var(--surface)",
+
               border:
                 "1px solid var(--border)",
             }}
@@ -594,6 +648,7 @@ export default async function LoanDetailPage({
               style={{
                 backgroundColor:
                   "var(--surface-secondary)",
+
                 color:
                   "var(--foreground-muted)",
               }}
@@ -616,20 +671,56 @@ export default async function LoanDetailPage({
         </section>
       )}
 
-      {/* Repayment form */}
-      {!paid && (
-        <RepaymentForm
-          loanId={
-            loan.id
-          }
-          outstandingCents={
-            outstanding.toString()
-          }
-          accounts={
-            accounts
-          }
-        />
-      )}
+      {/* Repayment */}
+      {!paid &&
+        repaymentAccounts.length >
+          0 && (
+          <RepaymentForm
+            loanId={
+              loan.id
+            }
+            outstandingCents={
+              outstanding.toString()
+            }
+            accounts={
+              repaymentAccounts
+            }
+          />
+        )}
+
+      {!paid &&
+        repaymentAccounts.length ===
+          0 && (
+          <section className="mt-7">
+            <div
+              className="rounded-[var(--radius-lg)] p-4"
+              style={{
+                backgroundColor:
+                  "var(--surface)",
+
+                border:
+                  "1px solid var(--border)",
+              }}
+            >
+              <p className="text-sm font-semibold">
+                No active account
+              </p>
+
+              <p
+                className="mt-1 text-[10px] leading-5"
+                style={{
+                  color:
+                    "var(--foreground-muted)",
+                }}
+              >
+                Restore or create
+                an account before
+                recording a loan
+                repayment.
+              </p>
+            </div>
+          </section>
+        )}
 
       {/* History */}
       <section className="mt-8">
@@ -666,6 +757,7 @@ export default async function LoanDetailPage({
           style={{
             backgroundColor:
               "var(--surface)",
+
             border:
               "1px solid var(--border)",
           }}
@@ -793,9 +885,11 @@ function HistoryRow({
   date: string;
   amount: bigint;
   accountName: string;
+
   note?:
     | string
     | null;
+
   borderTop: boolean;
 }) {
   const repayment =
@@ -900,7 +994,9 @@ function formatKathmanduDate(
   value:
     string
 ) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return "";
   }
 
@@ -942,10 +1038,17 @@ function formatDateOnly(
   const date =
     new Date(
       Date.UTC(
-        Number(year),
-        Number(month) -
-          1,
-        Number(day)
+        Number(
+          year
+        ),
+
+        Number(
+          month
+        ) - 1,
+
+        Number(
+          day
+        )
       )
     );
 

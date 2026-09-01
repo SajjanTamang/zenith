@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import {
+  Archive,
   ArrowDownLeft,
   ArrowLeft,
   ArrowLeftRight,
@@ -63,6 +64,10 @@ type Transaction = {
 type Account = {
   id: string;
   name: string;
+
+  archived_at:
+    | string
+    | null;
 };
 
 export default async function TransactionDetailPage({
@@ -106,13 +111,18 @@ export default async function TransactionDetailPage({
         )
         .maybeSingle(),
 
+      /*
+        Keep ALL accounts for historical
+        transaction display.
+      */
       supabase
         .from(
           "accounts"
         )
         .select(`
           id,
-          name
+          name,
+          archived_at
         `)
         .order(
           "created_at",
@@ -189,7 +199,7 @@ export default async function TransactionDetailPage({
           account
         ) => [
           account.id,
-          account.name,
+          account,
         ]
       )
     );
@@ -213,17 +223,15 @@ export default async function TransactionDetailPage({
     transaction.from_account_id
       ? accountsById.get(
           transaction.from_account_id
-        ) ??
-        "Unknown account"
-      : null;
+        )
+      : undefined;
 
   const toAccount =
     transaction.to_account_id
       ? accountsById.get(
           transaction.to_account_id
-        ) ??
-        "Unknown account"
-      : null;
+        )
+      : undefined;
 
   const typeLabel =
     transaction.transaction_type ===
@@ -243,6 +251,58 @@ export default async function TransactionDetailPage({
         ? "var(--negative)"
         : "var(--foreground)";
 
+  /*
+    Normal editing should only offer active
+    accounts.
+
+    Exception:
+    If this OLD transaction already uses an
+    archived account, keep that specific
+    account in the selector so saving a note
+    or amount does not silently change the
+    historical account.
+  */
+  const currentAccountIds =
+    new Set(
+      [
+        transaction.from_account_id,
+        transaction.to_account_id,
+      ].filter(
+        (
+          value
+        ): value is string =>
+          Boolean(
+            value
+          )
+      )
+    );
+
+  const editAccounts =
+    accounts
+      .filter(
+        (
+          account
+        ) =>
+          account.archived_at ===
+            null ||
+          currentAccountIds.has(
+            account.id
+          )
+      )
+      .map(
+        (
+          account
+        ) => ({
+          id:
+            account.id,
+
+          name:
+            account.archived_at
+              ? `${account.name} (Archived)`
+              : account.name,
+        })
+      );
+
   return (
     <div>
       <Link
@@ -260,6 +320,7 @@ export default async function TransactionDetailPage({
         Activity
       </Link>
 
+      {/* Header */}
       <div className="mt-5">
         <p
           className="text-[10px] font-medium uppercase tracking-[0.14em]"
@@ -288,6 +349,7 @@ export default async function TransactionDetailPage({
         </p>
       </div>
 
+      {/* Amount */}
       <section
         className="mt-7 rounded-[var(--radius-lg)] p-5"
         style={{
@@ -339,6 +401,7 @@ export default async function TransactionDetailPage({
         </div>
       </section>
 
+      {/* Details */}
       <section className="mt-7">
         <p
           className="text-[10px] font-medium uppercase tracking-[0.14em]"
@@ -362,32 +425,20 @@ export default async function TransactionDetailPage({
         >
           {transaction.transaction_type ===
             "income" && (
-            <DetailRow
-              icon={
-                <WalletCards
-                  size={15}
-                />
-              }
+            <AccountDetailRow
               label="Deposited to"
-              value={
-                toAccount ??
-                "Unknown account"
+              account={
+                toAccount
               }
             />
           )}
 
           {transaction.transaction_type ===
             "expense" && (
-            <DetailRow
-              icon={
-                <WalletCards
-                  size={15}
-                />
-              }
+            <AccountDetailRow
               label="Paid from"
-              value={
-                fromAccount ??
-                "Unknown account"
+              account={
+                fromAccount
               }
             />
           )}
@@ -395,29 +446,17 @@ export default async function TransactionDetailPage({
           {transaction.transaction_type ===
             "transfer" && (
             <>
-              <DetailRow
-                icon={
-                  <WalletCards
-                    size={15}
-                  />
-                }
+              <AccountDetailRow
                 label="From"
-                value={
-                  fromAccount ??
-                  "Unknown account"
+                account={
+                  fromAccount
                 }
               />
 
-              <DetailRow
-                icon={
-                  <WalletCards
-                    size={15}
-                  />
-                }
+              <AccountDetailRow
                 label="To"
-                value={
-                  toAccount ??
-                  "Unknown account"
+                account={
+                  toAccount
                 }
                 borderTop
               />
@@ -457,6 +496,7 @@ export default async function TransactionDetailPage({
         </div>
       </section>
 
+      {/* Note */}
       {transaction.note && (
         <section className="mt-7">
           <p
@@ -507,6 +547,7 @@ export default async function TransactionDetailPage({
         </section>
       )}
 
+      {/* Automatic game transfer */}
       {protectedGameTransfer ? (
         <section className="mt-7">
           <div
@@ -581,10 +622,90 @@ export default async function TransactionDetailPage({
             transaction.note
           }
           accounts={
-            accounts
+            editAccounts
           }
         />
       )}
+    </div>
+  );
+}
+
+function AccountDetailRow({
+  label,
+  account,
+  borderTop = false,
+}: {
+  label: string;
+
+  account:
+    | Account
+    | undefined;
+
+  borderTop?:
+    boolean;
+}) {
+  return (
+    <div
+      className="flex items-center gap-3 px-4 py-4"
+      style={{
+        borderTop:
+          borderTop
+            ? "1px solid var(--border)"
+            : undefined,
+      }}
+    >
+      <div
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)]"
+        style={{
+          backgroundColor:
+            "var(--surface-secondary)",
+
+          color:
+            "var(--foreground-muted)",
+        }}
+      >
+        <WalletCards
+          size={15}
+        />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p
+          className="text-[9px] font-medium uppercase tracking-[0.11em]"
+          style={{
+            color:
+              "var(--foreground-muted)",
+          }}
+        >
+          {label}
+        </p>
+
+        <div className="mt-1 flex items-center gap-2">
+          <p className="truncate text-sm font-semibold">
+            {account?.name ??
+              "Unknown account"}
+          </p>
+
+          {account?.archived_at && (
+            <span
+              className="flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.06em]"
+              style={{
+                backgroundColor:
+                  "var(--surface-secondary)",
+
+                color:
+                  "var(--foreground-muted)",
+              }}
+            >
+              <Archive
+                size={8}
+              />
+
+              Archived
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

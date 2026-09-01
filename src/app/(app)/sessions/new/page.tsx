@@ -18,6 +18,10 @@ import {
 type SessionAccount =
   FinanceAccount & {
     name: string;
+
+    archived_at:
+      | string
+      | null;
   };
 
 export default async function NewSessionPage() {
@@ -33,23 +37,29 @@ export default async function NewSessionPage() {
   ] =
     await Promise.all([
       supabase
-        .from("accounts")
+        .from(
+          "accounts"
+        )
         .select(`
           id,
           name,
           account_type,
           opening_balance,
-          created_at
+          created_at,
+          archived_at
         `)
         .order(
           "created_at",
           {
-            ascending: true,
+            ascending:
+              true,
           }
         ),
 
       supabase
-        .from("transactions")
+        .from(
+          "transactions"
+        )
         .select(`
           transaction_type,
           amount,
@@ -59,7 +69,9 @@ export default async function NewSessionPage() {
         `),
 
       supabase
-        .from("game_sessions")
+        .from(
+          "game_sessions"
+        )
         .select(`
           bankroll_account_id,
           status,
@@ -70,7 +82,9 @@ export default async function NewSessionPage() {
         `),
 
       supabase
-        .from("loans")
+        .from(
+          "loans"
+        )
         .select(`
           id,
           person_id,
@@ -83,7 +97,9 @@ export default async function NewSessionPage() {
         `),
 
       supabase
-        .from("loan_repayments")
+        .from(
+          "loan_repayments"
+        )
         .select(`
           id,
           loan_id,
@@ -101,7 +117,9 @@ export default async function NewSessionPage() {
     loansResult.error ??
     repaymentsResult.error;
 
-  if (error) {
+  if (
+    error
+  ) {
     return (
       <div>
         <p
@@ -133,6 +151,10 @@ export default async function NewSessionPage() {
     );
   }
 
+  /*
+    Keep every account for historical
+    balance calculation.
+  */
   const accounts =
     (accountsResult.data ??
       []) as SessionAccount[];
@@ -140,27 +162,52 @@ export default async function NewSessionPage() {
   const accountBalances =
     calculateAccountBalances(
       accounts,
+
       (transactionsResult.data ??
         []) as FinanceTransaction[],
+
       (gameSessionsResult.data ??
         []) as FinanceGameSession[],
+
       (loansResult.data ??
         []) as FinanceLoan[],
+
       (repaymentsResult.data ??
         []) as FinanceLoanRepayment[]
     );
 
+  /*
+    Archived accounts stay in the
+    calculation above but cannot be
+    selected for a new Game Session.
+  */
+  const activeAccounts =
+    accounts.filter(
+      (
+        account
+      ) =>
+        account.archived_at ===
+        null
+    );
+
   const bankrollAccounts =
-    accounts
+    activeAccounts
       .filter(
-        (account) =>
+        (
+          account
+        ) =>
           account.account_type ===
           "game_bankroll"
       )
       .map(
-        (account) => ({
-          id: account.id,
-          name: account.name,
+        (
+          account
+        ) => ({
+          id:
+            account.id,
+
+          name:
+            account.name,
 
           balanceCents:
             (
@@ -173,23 +220,30 @@ export default async function NewSessionPage() {
       );
 
   /*
-    A Game Bankroll cannot fund another
+    Game Bankroll cannot fund another
     Game Bankroll.
 
-    Bank, Cash, Wallet and Other accounts
-    are valid funding sources.
+    Cash, Bank, Wallet and Other
+    active accounts are valid sources.
   */
   const fundingAccounts =
-    accounts
+    activeAccounts
       .filter(
-        (account) =>
+        (
+          account
+        ) =>
           account.account_type !==
           "game_bankroll"
       )
       .map(
-        (account) => ({
-          id: account.id,
-          name: account.name,
+        (
+          account
+        ) => ({
+          id:
+            account.id,
+
+          name:
+            account.name,
 
           balanceCents:
             (

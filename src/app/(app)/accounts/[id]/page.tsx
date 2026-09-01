@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import {
+  Archive,
   ArrowLeft,
   Banknote,
   Gamepad2,
@@ -13,6 +14,10 @@ import {
 import {
   notFound,
 } from "next/navigation";
+
+import {
+  AccountArchiveActions,
+} from "@/components/accounts/account-archive-actions";
 
 import {
   AccountEditForm,
@@ -41,7 +46,16 @@ type Account = {
   account_type: string;
   opening_balance: string | number;
   created_at: string;
+
+  archived_at:
+    | string
+    | null;
 };
+
+type GameSessionWithId =
+  FinanceGameSession & {
+    id: string;
+  };
 
 export default async function AccountDetailPage({
   params,
@@ -76,7 +90,8 @@ export default async function AccountDetailPage({
           name,
           account_type,
           opening_balance,
-          created_at
+          created_at,
+          archived_at
         `)
         .order(
           "created_at",
@@ -103,6 +118,7 @@ export default async function AccountDetailPage({
           "game_sessions"
         )
         .select(`
+          id,
           bankroll_account_id,
           status,
           result_type,
@@ -214,7 +230,7 @@ export default async function AccountDetailPage({
 
   const gameSessions =
     (gameSessionsResult.data ??
-      []) as FinanceGameSession[];
+      []) as GameSessionWithId[];
 
   const loans =
     (loansResult.data ??
@@ -224,6 +240,16 @@ export default async function AccountDetailPage({
     (repaymentsResult.data ??
       []) as FinanceLoanRepayment[];
 
+  /*
+    IMPORTANT:
+
+    We calculate with ALL accounts,
+    including archived accounts.
+
+    Archive only removes an account
+    from future account selectors.
+    It does not erase history.
+  */
   const balances =
     calculateAccountBalances(
       accounts,
@@ -247,6 +273,26 @@ export default async function AccountDetailPage({
   const isGameBankroll =
     account.account_type ===
     "game_bankroll";
+
+  const isArchived =
+    account.archived_at !==
+    null;
+
+  /*
+    An active session using this
+    Game Bankroll blocks archiving.
+  */
+  const hasActiveGameSession =
+    isGameBankroll &&
+    gameSessions.some(
+      (
+        session
+      ) =>
+        session.bankroll_account_id ===
+          account.id &&
+        session.status ===
+          "active"
+    );
 
   return (
     <div>
@@ -274,15 +320,32 @@ export default async function AccountDetailPage({
         />
 
         <div className="min-w-0 flex-1">
-          <p
-            className="text-[10px] font-medium uppercase tracking-[0.14em]"
-            style={{
-              color:
-                "var(--foreground-muted)",
-            }}
-          >
-            Account
-          </p>
+          <div className="flex items-center gap-2">
+            <p
+              className="text-[10px] font-medium uppercase tracking-[0.14em]"
+              style={{
+                color:
+                  "var(--foreground-muted)",
+              }}
+            >
+              Account
+            </p>
+
+            {isArchived && (
+              <span
+                className="rounded-full px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.08em]"
+                style={{
+                  backgroundColor:
+                    "var(--surface-secondary)",
+
+                  color:
+                    "var(--foreground-muted)",
+                }}
+              >
+                Archived
+              </span>
+            )}
+          </div>
 
           <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight">
             {account.name}
@@ -301,6 +364,56 @@ export default async function AccountDetailPage({
           </p>
         </div>
       </div>
+
+      {/* Archived notice */}
+      {isArchived && (
+        <section
+          className="mt-7 flex gap-3 rounded-[var(--radius-lg)] p-4"
+          style={{
+            backgroundColor:
+              "var(--surface)",
+
+            border:
+              "1px solid var(--border)",
+          }}
+        >
+          <div
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)]"
+            style={{
+              backgroundColor:
+                "var(--surface-secondary)",
+
+              color:
+                "var(--foreground-muted)",
+            }}
+          >
+            <Archive
+              size={16}
+            />
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold">
+              Account archived
+            </p>
+
+            <p
+              className="mt-1 text-[10px] leading-5"
+              style={{
+                color:
+                  "var(--foreground-muted)",
+              }}
+            >
+              This account stays
+              in your historical
+              records but cannot
+              be used for new
+              transactions until
+              it is restored.
+            </p>
+          </div>
+        </section>
+      )}
 
       {/* Current balance */}
       <section
@@ -417,9 +530,25 @@ export default async function AccountDetailPage({
             }
             borderTop
           />
+
+          <DetailRow
+            icon={
+              <Archive
+                size={15}
+              />
+            }
+            label="Status"
+            value={
+              isArchived
+                ? "Archived"
+                : "Active"
+            }
+            borderTop
+          />
         </div>
       </section>
 
+      {/* Game Bankroll notice */}
       {isGameBankroll && (
         <section className="mt-7">
           <div
@@ -472,18 +601,40 @@ export default async function AccountDetailPage({
         </section>
       )}
 
-      <AccountEditForm
+      {/* Edit only while active */}
+      {!isArchived && (
+        <AccountEditForm
+          accountId={
+            account.id
+          }
+          accountType={
+            account.account_type
+          }
+          initialName={
+            account.name
+          }
+          initialOpeningBalance={
+            account.opening_balance
+          }
+        />
+      )}
+
+      {/* Archive / Restore */}
+      <AccountArchiveActions
         accountId={
           account.id
         }
-        accountType={
-          account.account_type
-        }
-        initialName={
+        accountName={
           account.name
         }
-        initialOpeningBalance={
-          account.opening_balance
+        isArchived={
+          isArchived
+        }
+        currentBalanceCents={
+          currentBalance.toString()
+        }
+        hasActiveGameSession={
+          hasActiveGameSession
         }
       />
     </div>
@@ -499,9 +650,14 @@ function DetailRow({
   icon:
     React.ReactNode;
 
-  label: string;
-  value: string;
-  borderTop?: boolean;
+  label:
+    string;
+
+  value:
+    string;
+
+  borderTop?:
+    boolean;
 }) {
   return (
     <div

@@ -22,6 +22,22 @@ type QuickAddPageProps = {
   }>;
 };
 
+type QuickAddAccount = {
+  id: string;
+  name: string;
+  account_type: string;
+
+  opening_balance:
+    | string
+    | number;
+
+  created_at: string;
+
+  archived_at:
+    | string
+    | null;
+};
+
 export default async function QuickAddPage({
   searchParams,
 }: QuickAddPageProps) {
@@ -50,23 +66,29 @@ export default async function QuickAddPage({
   ] =
     await Promise.all([
       supabase
-        .from("accounts")
+        .from(
+          "accounts"
+        )
         .select(`
           id,
           name,
           account_type,
           opening_balance,
-          created_at
+          created_at,
+          archived_at
         `)
         .order(
           "created_at",
           {
-            ascending: true,
+            ascending:
+              true,
           }
         ),
 
       supabase
-        .from("transactions")
+        .from(
+          "transactions"
+        )
         .select(`
           transaction_type,
           amount,
@@ -76,7 +98,9 @@ export default async function QuickAddPage({
         `),
 
       supabase
-        .from("game_sessions")
+        .from(
+          "game_sessions"
+        )
         .select(`
           id,
           bankroll_account_id,
@@ -92,12 +116,15 @@ export default async function QuickAddPage({
         .order(
           "started_at",
           {
-            ascending: false,
+            ascending:
+              false,
           }
         ),
 
       supabase
-        .from("loans")
+        .from(
+          "loans"
+        )
         .select(`
           id,
           person_id,
@@ -110,7 +137,9 @@ export default async function QuickAddPage({
         `),
 
       supabase
-        .from("loan_repayments")
+        .from(
+          "loan_repayments"
+        )
         .select(`
           id,
           loan_id,
@@ -128,7 +157,9 @@ export default async function QuickAddPage({
     loansResult.error ??
     repaymentsResult.error;
 
-  if (error) {
+  if (
+    error
+  ) {
     return (
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
@@ -152,9 +183,16 @@ export default async function QuickAddPage({
     );
   }
 
+  /*
+    Keep ALL accounts here.
+
+    Archived accounts still belong to
+    historical transactions and must
+    remain part of balance calculations.
+  */
   const accounts =
-    accountsResult.data ??
-    [];
+    (accountsResult.data ??
+      []) as QuickAddAccount[];
 
   const transactions =
     transactionsResult.data ??
@@ -181,9 +219,25 @@ export default async function QuickAddPage({
       repayments
     );
 
+  /*
+    Only ACTIVE accounts may be selected
+    for new income, expenses, transfers
+    and lending.
+  */
+  const activeAccounts =
+    accounts.filter(
+      (
+        account
+      ) =>
+        account.archived_at ===
+        null
+    );
+
   const formAccounts =
-    accounts.map(
-      (account) => ({
+    activeAccounts.map(
+      (
+        account
+      ) => ({
         id:
           account.id,
 
@@ -206,12 +260,16 @@ export default async function QuickAddPage({
   const activeSessions =
     sessions
       .filter(
-        (session) =>
+        (
+          session
+        ) =>
           session.status ===
           "active"
       )
       .map(
-        (session) => ({
+        (
+          session
+        ) => ({
           id:
             session.id,
 
@@ -234,16 +292,16 @@ export default async function QuickAddPage({
       : undefined;
 
   /*
-    Only accept the requested session
-    when it is still an active session.
-
-    This prevents an old/completed/random
-    session ID from being preselected.
+    Only accept a requested game
+    session if that session is
+    still active.
   */
   const validRequestedSession =
     requestedSessionId &&
     activeSessions.some(
-      (session) =>
+      (
+        session
+      ) =>
         session.id ===
         requestedSessionId
     )
@@ -313,10 +371,14 @@ function firstSearchParam(
       value
     )
   ) {
-    return value[0] ??
-      "";
+    return (
+      value[0] ??
+      ""
+    );
   }
 
-  return value ??
-    "";
+  return (
+    value ??
+    ""
+  );
 }
