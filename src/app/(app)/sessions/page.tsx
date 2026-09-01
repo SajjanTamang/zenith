@@ -2,7 +2,9 @@ import Link from "next/link";
 
 import {
   ArrowRight,
+  ChevronRight,
   CircleDot,
+  Eye,
   Gamepad2,
   HandCoins,
 } from "lucide-react";
@@ -46,11 +48,14 @@ export default async function SessionsPage() {
     await createClient();
 
   const {
-    data: sessions,
+    data:
+      sessions,
     error,
   } =
     await supabase
-      .from("game_sessions")
+      .from(
+        "game_sessions"
+      )
       .select(`
         id,
         playing_amount,
@@ -65,11 +70,14 @@ export default async function SessionsPage() {
       .order(
         "started_at",
         {
-          ascending: false,
+          ascending:
+            false,
         }
       );
 
-  if (error) {
+  if (
+    error
+  ) {
     return (
       <div>
         <p
@@ -96,7 +104,8 @@ export default async function SessionsPage() {
               "var(--negative)",
           }}
         >
-          Could not load sessions:{" "}
+          Could not load
+          sessions:{" "}
           {error.message}
         </div>
       </div>
@@ -109,14 +118,18 @@ export default async function SessionsPage() {
 
   const activeSession =
     typedSessions.find(
-      (session) =>
+      (
+        session
+      ) =>
         session.status ===
         "active"
     );
 
   const completedSessions =
     typedSessions.filter(
-      (session) =>
+      (
+        session
+      ) =>
         session.status ===
         "completed"
     );
@@ -156,8 +169,9 @@ export default async function SessionsPage() {
               "var(--foreground-muted)",
           }}
         >
-          Track each playing day
-          from start to final result.
+          Track each playing
+          day from start to
+          final result.
         </p>
       </section>
 
@@ -201,9 +215,11 @@ export default async function SessionsPage() {
 
             <SummaryMetric
               label="Sessions"
-              value={String(
-                thisMonth.totalSessions
-              )}
+              value={
+                String(
+                  thisMonth.totalSessions
+                )
+              }
             />
 
             <SummaryMetric
@@ -214,7 +230,7 @@ export default async function SessionsPage() {
         </div>
       </section>
 
-      {/* Active Session */}
+      {/* Active */}
       <section className="mt-8">
         <SectionLabel>
           Active session
@@ -245,7 +261,9 @@ export default async function SessionsPage() {
                 "var(--foreground-muted)",
             }}
           >
-            {completedSessions.length}{" "}
+            {
+              completedSessions.length
+            }{" "}
             {completedSessions.length ===
             1
               ? "session"
@@ -272,13 +290,16 @@ export default async function SessionsPage() {
                   "var(--foreground-muted)",
               }}
             >
-              No completed sessions yet.
+              No completed
+              sessions yet.
             </p>
           </div>
         ) : (
           <div className="mt-5 space-y-7">
             {historyGroups.map(
-              (group) => (
+              (
+                group
+              ) => (
                 <SessionHistoryGroup
                   key={
                     group.dateKey
@@ -336,8 +357,8 @@ function EmptyActiveSession() {
                 "var(--foreground-muted)",
             }}
           >
-            Ready when you start
-            playing again.
+            Ready when you
+            start playing again.
           </p>
         </div>
       </div>
@@ -390,7 +411,6 @@ function ActiveSessionCard({
       }}
     >
       <div className="p-5">
-        {/* Active state */}
         <div className="flex items-center gap-2">
           <span
             className="h-2 w-2 rounded-full"
@@ -411,7 +431,6 @@ function ActiveSessionCard({
           </span>
         </div>
 
-        {/* Session details */}
         <div className="mt-4 flex items-start justify-between gap-5">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -466,7 +485,6 @@ function ActiveSessionCard({
           </div>
         </div>
 
-        {/* Session note */}
         {session.note && (
           <p
             className="mt-4 text-[10px] leading-4"
@@ -479,8 +497,24 @@ function ActiveSessionCard({
           </p>
         )}
 
-        {/* Secondary contextual action */}
-        <div className="mt-5">
+        <div className="mt-5 flex items-center gap-5">
+          <Link
+            href={
+              `/sessions/${session.id}`
+            }
+            className="inline-flex items-center gap-2 text-[11px] font-semibold"
+            style={{
+              color:
+                "var(--foreground-secondary)",
+            }}
+          >
+            <Eye
+              size={14}
+            />
+
+            View details
+          </Link>
+
           <Link
             href={
               lendHref
@@ -500,9 +534,10 @@ function ActiveSessionCard({
         </div>
       </div>
 
-      {/* Primary action */}
       <Link
-        href={`/sessions/${session.id}/finish`}
+        href={
+          `/sessions/${session.id}/finish`
+        }
         className="flex h-12 items-center justify-end gap-2 border-t px-5 text-sm font-semibold"
         style={{
           borderColor:
@@ -586,8 +621,11 @@ function SessionHistoryRow({
     );
 
   return (
-    <div
-      className="px-4 py-4"
+    <Link
+      href={
+        `/sessions/${session.id}`
+      }
+      className="flex items-center gap-3 px-4 py-4 transition hover:brightness-[0.98]"
       style={{
         borderTop:
           borderTop
@@ -595,59 +633,66 @@ function SessionHistoryRow({
             : undefined,
       }}
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">
-            {
-              session.game_type
-            }
-          </p>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold">
+          {
+            session.game_type
+          }
+        </p>
 
-          <p
-            className="mt-1 text-[10px]"
-            style={{
-              color:
-                "var(--foreground-muted)",
-            }}
-          >
-            Played NPR{" "}
-            {formatMoneyFromCents(
-              moneyToCents(
-                session.playing_amount
-              )
-            )}
-          </p>
-        </div>
-
-        <div className="shrink-0 text-right">
-          <SignedMoney
-            value={
-              pnl
-            }
-          />
-
-          <div className="mt-2 flex justify-end">
-            <ResultBadge
-              result={
-                session.result_type
-              }
-            />
-          </div>
-        </div>
-      </div>
-
-      {session.note && (
         <p
-          className="mt-3 text-[10px]"
+          className="mt-1 text-[10px]"
           style={{
             color:
               "var(--foreground-muted)",
           }}
         >
-          {session.note}
+          Played NPR{" "}
+          {formatMoneyFromCents(
+            moneyToCents(
+              session.playing_amount
+            )
+          )}
         </p>
-      )}
-    </div>
+
+        {session.note && (
+          <p
+            className="mt-2 truncate text-[10px]"
+            style={{
+              color:
+                "var(--foreground-muted)",
+            }}
+          >
+            {session.note}
+          </p>
+        )}
+      </div>
+
+      <div className="shrink-0 text-right">
+        <SignedMoney
+          value={
+            pnl
+          }
+        />
+
+        <div className="mt-2 flex justify-end">
+          <ResultBadge
+            result={
+              session.result_type
+            }
+          />
+        </div>
+      </div>
+
+      <ChevronRight
+        size={15}
+        className="shrink-0"
+        style={{
+          color:
+            "var(--foreground-muted)",
+        }}
+      />
+    </Link>
   );
 }
 

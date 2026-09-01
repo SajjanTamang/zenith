@@ -147,7 +147,9 @@ export function buildActivityItems(
   const accountNames =
     new Map(
       accounts.map(
-        (account) => [
+        (
+          account
+        ) => [
           account.id,
           account.name,
         ]
@@ -157,7 +159,9 @@ export function buildActivityItems(
   const personNames =
     new Map(
       loanPeople.map(
-        (person) => [
+        (
+          person
+        ) => [
           person.id,
           person.name,
         ]
@@ -167,7 +171,9 @@ export function buildActivityItems(
   const loansById =
     new Map(
       loans.map(
-        (loan) => [
+        (
+          loan
+        ) => [
           loan.id,
           loan,
         ]
@@ -177,7 +183,9 @@ export function buildActivityItems(
   const gameNames =
     new Map(
       gameSessions.map(
-        (session) => [
+        (
+          session
+        ) => [
           session.id,
           session.game_type,
         ]
@@ -466,7 +474,8 @@ export function buildActivityItems(
         .join(" ")
         .toLowerCase(),
 
-      href: null,
+      href:
+        `/sessions/${session.id}`,
     });
   }
 
@@ -557,8 +566,10 @@ export function buildActivityItems(
         "lent from",
         personName,
         accountName,
-        relatedGameName ?? "",
-        loan.note ?? "",
+        relatedGameName ??
+          "",
+        loan.note ??
+          "",
       ]
         .join(" ")
         .toLowerCase(),
@@ -665,8 +676,10 @@ export function buildActivityItems(
         "returned to",
         personName,
         accountName,
-        relatedGameName ?? "",
-        repayment.note ?? "",
+        relatedGameName ??
+          "",
+        repayment.note ??
+          "",
       ]
         .join(" ")
         .toLowerCase(),
