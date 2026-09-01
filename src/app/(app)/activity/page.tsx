@@ -24,14 +24,18 @@ export default async function ActivityPage() {
   ] =
     await Promise.all([
       supabase
-        .from("accounts")
+        .from(
+          "accounts"
+        )
         .select(`
           id,
           name
         `),
 
       supabase
-        .from("transactions")
+        .from(
+          "transactions"
+        )
         .select(`
           id,
           transaction_type,
@@ -44,7 +48,9 @@ export default async function ActivityPage() {
         `),
 
       supabase
-        .from("game_sessions")
+        .from(
+          "game_sessions"
+        )
         .select(`
           id,
           game_type,
@@ -54,18 +60,26 @@ export default async function ActivityPage() {
           result_type,
           result_amount,
           started_at,
-          ended_at
+          ended_at,
+          voided_at,
+          void_reason,
+          voided_original_result_type,
+          voided_original_result_amount
         `),
 
       supabase
-        .from("loan_people")
+        .from(
+          "loan_people"
+        )
         .select(`
           id,
           name
         `),
 
       supabase
-        .from("loans")
+        .from(
+          "loans"
+        )
         .select(`
           id,
           person_id,
@@ -78,7 +92,9 @@ export default async function ActivityPage() {
         `),
 
       supabase
-        .from("loan_repayments")
+        .from(
+          "loan_repayments"
+        )
         .select(`
           id,
           loan_id,
@@ -97,7 +113,9 @@ export default async function ActivityPage() {
     loansResult.error ??
     repaymentsResult.error;
 
-  if (error) {
+  if (
+    error
+  ) {
     return (
       <div>
         <p
@@ -182,8 +200,9 @@ export default async function ActivityPage() {
         }}
       >
         Transactions, game
-        results, and lending in
-        one place.
+        results, corrections,
+        and lending in one
+        place.
       </p>
 
       <ActivityList
@@ -199,7 +218,8 @@ export default async function ActivityPage() {
 }
 
 function getKathmanduDateKey(
-  value: Date
+  value:
+    Date
 ) {
   const parts =
     new Intl.DateTimeFormat(
@@ -223,21 +243,27 @@ function getKathmanduDateKey(
 
   const year =
     parts.find(
-      (part) =>
+      (
+        part
+      ) =>
         part.type ===
         "year"
     )?.value;
 
   const month =
     parts.find(
-      (part) =>
+      (
+        part
+      ) =>
         part.type ===
         "month"
     )?.value;
 
   const day =
     parts.find(
-      (part) =>
+      (
+        part
+      ) =>
         part.type ===
         "day"
     )?.value;

@@ -1,23 +1,67 @@
-import { moneyToCents } from "@/lib/money";
+import {
+  moneyToCents,
+} from "@/lib/money";
 
 export type AnalyticsGameSession = {
   id: string;
 
-  status: "active" | "completed";
+  status:
+    | "active"
+    | "completed";
 
-  playing_amount?: string | number;
+  playing_amount?:
+    | string
+    | number;
 
   game_type?: string;
 
-  note?: string | null;
+  note?:
+    | string
+    | null;
 
-  result_type: "win" | "loss" | "even" | null;
+  result_type:
+    | "win"
+    | "loss"
+    | "even"
+    | null;
 
-  result_amount: string | number | null;
+  result_amount:
+    | string
+    | number
+    | null;
 
   started_at: string;
 
-  ended_at: string | null;
+  ended_at:
+    | string
+    | null;
+
+  /*
+    A voided session remains status=completed
+    for database compatibility.
+
+    voided_at is what tells Zenith that the
+    session must no longer count financially
+    or statistically.
+  */
+  voided_at?:
+    | string
+    | null;
+
+  void_reason?:
+    | string
+    | null;
+
+  voided_original_result_type?:
+    | "win"
+    | "loss"
+    | "even"
+    | null;
+
+  voided_original_result_amount?:
+    | string
+    | number
+    | null;
 };
 
 export type DailyGameResult = {
@@ -32,26 +76,71 @@ export type CumulativePnLPoint = {
   cumulativePnL: bigint;
 };
 
-export function getSessionPnL(
-  session: AnalyticsGameSession
+/*
+  Central helper.
+
+  Use this anywhere Zenith needs to know
+  whether a completed session should count
+  in real analytics.
+*/
+export function isCountedCompletedGameSession(
+  session:
+    AnalyticsGameSession
 ) {
+  return (
+    session.status ===
+      "completed" &&
+    !session.voided_at
+  );
+}
+
+export function isVoidedGameSession(
+  session:
+    AnalyticsGameSession
+) {
+  return Boolean(
+    session.voided_at
+  );
+}
+
+export function getSessionPnL(
+  session:
+    AnalyticsGameSession
+) {
+  /*
+    Active sessions do not have final P&L.
+
+    Voided completed sessions also have
+    zero current financial effect.
+  */
   if (
-    session.status !== "completed" ||
-    session.result_type === null ||
-    session.result_amount === null
+    !isCountedCompletedGameSession(
+      session
+    ) ||
+    session.result_type ===
+      null ||
+    session.result_amount ===
+      null
   ) {
     return BigInt(0);
   }
 
-  const amount = moneyToCents(
-    session.result_amount
-  );
+  const amount =
+    moneyToCents(
+      session.result_amount
+    );
 
-  if (session.result_type === "win") {
+  if (
+    session.result_type ===
+    "win"
+  ) {
     return amount;
   }
 
-  if (session.result_type === "loss") {
+  if (
+    session.result_type ===
+    "loss"
+  ) {
     return -amount;
   }
 
@@ -59,35 +148,61 @@ export function getSessionPnL(
 }
 
 export function buildDailyGameResults(
-  sessions: AnalyticsGameSession[]
+  sessions:
+    AnalyticsGameSession[]
 ) {
   const dailyResults =
-    new Map<string, DailyGameResult>();
+    new Map<
+      string,
+      DailyGameResult
+    >();
 
-  for (const session of sessions) {
-    if (session.status !== "completed") {
+  for (
+    const session
+    of sessions
+  ) {
+    /*
+      Voided sessions do not create a
+      statistical playing day.
+    */
+    if (
+      !isCountedCompletedGameSession(
+        session
+      )
+    ) {
       continue;
     }
 
     /*
-      Group the session by the Kathmandu date
-      on which it started.
+      Group by Kathmandu date on which
+      the session started.
 
-      If a session ends after midnight, it still
-      belongs to the day it started.
+      If the session finishes after midnight,
+      it still belongs to its starting day.
     */
     const dateKey =
-      kathmanduDateKey(session.started_at);
+      kathmanduDateKey(
+        session.started_at
+      );
 
     const existing =
-      dailyResults.get(dateKey) ?? {
+      dailyResults.get(
+        dateKey
+      ) ?? {
         dateKey,
-        pnl: BigInt(0),
-        sessions: 0,
+        pnl:
+          BigInt(0),
+        sessions:
+          0,
       };
 
-    existing.pnl += getSessionPnL(session);
-    existing.sessions += 1;
+    existing.pnl +=
+      getSessionPnL(
+        session
+      );
+
+    existing.sessions +=
+      1;
 
     dailyResults.set(
       dateKey,
@@ -98,7 +213,10 @@ export function buildDailyGameResults(
   return Array.from(
     dailyResults.values()
   ).sort(
-    (a, b) =>
+    (
+      a,
+      b
+    ) =>
       b.dateKey.localeCompare(
         a.dateKey
       )
@@ -106,12 +224,21 @@ export function buildDailyGameResults(
 }
 
 export function calculateGameAnalytics(
-  sessions: AnalyticsGameSession[]
+  sessions:
+    AnalyticsGameSession[]
 ) {
+  /*
+    Only real, non-voided completed sessions
+    participate in game statistics.
+  */
   const completedSessions =
     sessions.filter(
-      (session) =>
-        session.status === "completed"
+      (
+        session
+      ) =>
+        isCountedCompletedGameSession(
+          session
+        )
     );
 
   const dailyResults =
@@ -124,20 +251,29 @@ export function calculateGameAnalytics(
   */
   const winningSessions =
     completedSessions.filter(
-      (session) =>
-        session.result_type === "win"
+      (
+        session
+      ) =>
+        session.result_type ===
+        "win"
     ).length;
 
   const losingSessions =
     completedSessions.filter(
-      (session) =>
-        session.result_type === "loss"
+      (
+        session
+      ) =>
+        session.result_type ===
+        "loss"
     ).length;
 
   const evenSessions =
     completedSessions.filter(
-      (session) =>
-        session.result_type === "even"
+      (
+        session
+      ) =>
+        session.result_type ===
+        "even"
     ).length;
 
   /*
@@ -145,22 +281,32 @@ export function calculateGameAnalytics(
   */
   const totalPnL =
     completedSessions.reduce(
-      (total, session) =>
+      (
+        total,
+        session
+      ) =>
         total +
-        getSessionPnL(session),
+        getSessionPnL(
+          session
+        ),
       BigInt(0)
     );
 
   /*
-    Total amount the user chose to play with
-    across completed sessions.
-
     Playing amount is informational only.
-    It is NOT profit, loss, income, or expense.
+
+    It is not:
+      income
+      expense
+      profit
+      loss
   */
   const totalPlayingAmount =
     completedSessions.reduce(
-      (total, session) => {
+      (
+        total,
+        session
+      ) => {
         if (
           session.playing_amount ===
           undefined
@@ -179,7 +325,8 @@ export function calculateGameAnalytics(
     );
 
   const averagePlayingAmount =
-    completedSessions.length > 0
+    completedSessions.length >
+    0
       ? totalPlayingAmount /
         BigInt(
           completedSessions.length
@@ -188,57 +335,73 @@ export function calculateGameAnalytics(
 
   /*
     Daily statistics.
-
-    If multiple sessions were ever recorded on
-    the same date, they are combined into one
-    daily P&L result here.
   */
   const winningDays =
     dailyResults.filter(
-      (day) =>
-        day.pnl > BigInt(0)
+      (
+        day
+      ) =>
+        day.pnl >
+        BigInt(0)
     ).length;
 
   const losingDays =
     dailyResults.filter(
-      (day) =>
-        day.pnl < BigInt(0)
+      (
+        day
+      ) =>
+        day.pnl <
+        BigInt(0)
     ).length;
 
   const evenDays =
     dailyResults.filter(
-      (day) =>
-        day.pnl === BigInt(0)
+      (
+        day
+      ) =>
+        day.pnl ===
+        BigInt(0)
     ).length;
 
   /*
-    Best and worst daily P&L.
+    Best / worst days.
   */
   const bestDay =
-    dailyResults.length > 0
+    dailyResults.length >
+    0
       ? dailyResults.reduce(
-          (best, day) =>
-            day.pnl > best.pnl
+          (
+            best,
+            day
+          ) =>
+            day.pnl >
+            best.pnl
               ? day
               : best
         )
       : null;
 
   const worstDay =
-    dailyResults.length > 0
+    dailyResults.length >
+    0
       ? dailyResults.reduce(
-          (worst, day) =>
-            day.pnl < worst.pnl
+          (
+            worst,
+            day
+          ) =>
+            day.pnl <
+            worst.pnl
               ? day
               : worst
         )
       : null;
 
   /*
-    Average P&L per completed session.
+    Average P&L per counted completed session.
   */
   const averagePnL =
-    completedSessions.length > 0
+    completedSessions.length >
+    0
       ? totalPnL /
         BigInt(
           completedSessions.length
@@ -246,20 +409,23 @@ export function calculateGameAnalytics(
       : BigInt(0);
 
   /*
-    Session win rate.
+    Even sessions are excluded from the
+    win/loss denominator.
 
-    Even sessions are excluded from
-    the win/loss denominator.
+    Voided sessions were already excluded.
   */
   const decisiveSessions =
     winningSessions +
     losingSessions;
 
   const winRate =
-    decisiveSessions > 0
+    decisiveSessions >
+    0
       ? Math.round(
-          (winningSessions /
-            decisiveSessions) *
+          (
+            winningSessions /
+            decisiveSessions
+          ) *
             100
         )
       : 0;
@@ -296,7 +462,8 @@ export function calculateGameAnalytics(
 }
 
 export function getCurrentMonthGameAnalytics(
-  sessions: AnalyticsGameSession[]
+  sessions:
+    AnalyticsGameSession[]
 ) {
   const currentMonth =
     kathmanduMonthKey(
@@ -305,10 +472,13 @@ export function getCurrentMonthGameAnalytics(
 
   const monthlySessions =
     sessions.filter(
-      (session) => {
+      (
+        session
+      ) => {
         if (
-          session.status !==
-          "completed"
+          !isCountedCompletedGameSession(
+            session
+          )
         ) {
           return false;
         }
@@ -316,7 +486,8 @@ export function getCurrentMonthGameAnalytics(
         return (
           kathmanduMonthKey(
             session.started_at
-          ) === currentMonth
+          ) ===
+          currentMonth
         );
       }
     );
@@ -327,17 +498,24 @@ export function getCurrentMonthGameAnalytics(
 }
 
 export function buildCumulativeGamePnL(
-  sessions: AnalyticsGameSession[]
+  sessions:
+    AnalyticsGameSession[]
 ) {
   const completedSessions =
     sessions
       .filter(
-        (session) =>
-          session.status ===
-          "completed"
+        (
+          session
+        ) =>
+          isCountedCompletedGameSession(
+            session
+          )
       )
       .sort(
-        (a, b) =>
+        (
+          a,
+          b
+        ) =>
           new Date(
             a.started_at
           ).getTime() -
@@ -349,19 +527,21 @@ export function buildCumulativeGamePnL(
   let cumulativePnL =
     BigInt(0);
 
-  const points: CumulativePnLPoint[] =
-    [];
+  const points:
+    CumulativePnLPoint[] =
+      [];
 
   for (
-    const session of
-    completedSessions
+    const session
+    of completedSessions
   ) {
     const pnl =
       getSessionPnL(
         session
       );
 
-    cumulativePnL += pnl;
+    cumulativePnL +=
+      pnl;
 
     points.push({
       dateKey:
@@ -379,11 +559,16 @@ export function buildCumulativeGamePnL(
 }
 
 export function kathmanduDateKey(
-  value: string | Date
+  value:
+    | string
+    | Date
 ) {
   const date =
-    typeof value === "string"
-      ? new Date(value)
+    typeof value ===
+    "string"
+      ? new Date(
+          value
+        )
       : value;
 
   const parts =
@@ -393,41 +578,60 @@ export function kathmanduDateKey(
         timeZone:
           "Asia/Kathmandu",
 
-        year: "numeric",
+        year:
+          "numeric",
 
-        month: "2-digit",
+        month:
+          "2-digit",
 
-        day: "2-digit",
+        day:
+          "2-digit",
       }
-    ).formatToParts(date);
+    ).formatToParts(
+      date
+    );
 
   const year =
     parts.find(
-      (part) =>
-        part.type === "year"
+      (
+        part
+      ) =>
+        part.type ===
+        "year"
     )?.value;
 
   const month =
     parts.find(
-      (part) =>
-        part.type === "month"
+      (
+        part
+      ) =>
+        part.type ===
+        "month"
     )?.value;
 
   const day =
     parts.find(
-      (part) =>
-        part.type === "day"
+      (
+        part
+      ) =>
+        part.type ===
+        "day"
     )?.value;
 
   return `${year}-${month}-${day}`;
 }
 
 export function kathmanduMonthKey(
-  value: string | Date
+  value:
+    | string
+    | Date
 ) {
   const date =
-    typeof value === "string"
-      ? new Date(value)
+    typeof value ===
+    "string"
+      ? new Date(
+          value
+        )
       : value;
 
   const parts =
@@ -437,22 +641,32 @@ export function kathmanduMonthKey(
         timeZone:
           "Asia/Kathmandu",
 
-        year: "numeric",
+        year:
+          "numeric",
 
-        month: "2-digit",
+        month:
+          "2-digit",
       }
-    ).formatToParts(date);
+    ).formatToParts(
+      date
+    );
 
   const year =
     parts.find(
-      (part) =>
-        part.type === "year"
+      (
+        part
+      ) =>
+        part.type ===
+        "year"
     )?.value;
 
   const month =
     parts.find(
-      (part) =>
-        part.type === "month"
+      (
+        part
+      ) =>
+        part.type ===
+        "month"
     )?.value;
 
   return `${year}-${month}`;

@@ -22,14 +22,21 @@ export async function GET(
   request: Request,
   context: RouteContext
 ) {
-  const { type } =
+  const {
+    type,
+  } =
     await context.params;
 
-  if (!isExportType(type)) {
+  if (
+    !isExportType(
+      type
+    )
+  ) {
     return new Response(
       "Unknown export type.",
       {
-        status: 404,
+        status:
+          404,
       }
     );
   }
@@ -38,19 +45,24 @@ export async function GET(
     await createClient();
 
   const {
-    data: claimsData,
-    error: claimsError,
+    data:
+      claimsData,
+    error:
+      claimsError,
   } =
     await supabase.auth.getClaims();
 
   if (
     claimsError ||
-    !claimsData?.claims?.sub
+    !claimsData
+      ?.claims
+      ?.sub
   ) {
     return new Response(
       "Unauthorized",
       {
-        status: 401,
+        status:
+          401,
       }
     );
   }
@@ -68,7 +80,8 @@ export async function GET(
   const requestedMonth =
     url.searchParams.get(
       "month"
-    ) ?? "";
+    ) ??
+    "";
 
   const monthKey =
     getSafeMonthKey(
@@ -108,7 +121,8 @@ async function exportTransactions(
       typeof createClient
     >
   >,
-  monthKey: string
+  monthKey:
+    string
 ) {
   const [
     transactionsResult,
@@ -132,7 +146,8 @@ async function exportTransactions(
         .order(
           "occurred_at",
           {
-            ascending: true,
+            ascending:
+              true,
           }
         ),
 
@@ -150,7 +165,9 @@ async function exportTransactions(
     transactionsResult.error ??
     accountsResult.error;
 
-  if (error) {
+  if (
+    error
+  ) {
     return csvError(
       error.message
     );
@@ -162,7 +179,9 @@ async function exportTransactions(
         accountsResult.data ??
         []
       ).map(
-        (account) => [
+        (
+          account
+        ) => [
           account.id,
           account.name,
         ]
@@ -175,14 +194,18 @@ async function exportTransactions(
       []
     )
       .filter(
-        (transaction) =>
+        (
+          transaction
+        ) =>
           getKathmanduMonthKey(
             transaction.occurred_at
           ) ===
           monthKey
       )
       .map(
-        (transaction) => [
+        (
+          transaction
+        ) => [
           formatKathmanduDate(
             transaction.occurred_at
           ),
@@ -203,13 +226,15 @@ async function exportTransactions(
           transaction.from_account_id
             ? accountsById.get(
                 transaction.from_account_id
-              ) ?? ""
+              ) ??
+              ""
             : "",
 
           transaction.to_account_id
             ? accountsById.get(
                 transaction.to_account_id
-              ) ?? ""
+              ) ??
+              ""
             : "",
 
           transaction.note ??
@@ -244,7 +269,8 @@ async function exportGames(
       typeof createClient
     >
   >,
-  monthKey: string
+  monthKey:
+    string
 ) {
   const {
     data,
@@ -263,16 +289,23 @@ async function exportGames(
         result_type,
         result_amount,
         started_at,
-        ended_at
+        ended_at,
+        voided_at,
+        void_reason,
+        voided_original_result_type,
+        voided_original_result_amount
       `)
       .order(
         "started_at",
         {
-          ascending: true,
+          ascending:
+            true,
         }
       );
 
-  if (error) {
+  if (
+    error
+  ) {
     return csvError(
       error.message
     );
@@ -284,49 +317,99 @@ async function exportGames(
       []
     )
       .filter(
-        (session) =>
+        (
+          session
+        ) =>
           getKathmanduMonthKey(
             session.started_at
           ) ===
           monthKey
       )
       .map(
-        (session) => [
-          formatKathmanduDate(
-            session.started_at
-          ),
+        (
+          session
+        ) => {
+          const voided =
+            Boolean(
+              session.voided_at
+            );
 
-          formatKathmanduTime(
-            session.started_at
-          ),
+          return [
+            formatKathmanduDate(
+              session.started_at
+            ),
 
-          session.game_type,
+            formatKathmanduTime(
+              session.started_at
+            ),
 
-          formatMoney(
-            session.playing_amount
-          ),
+            session.game_type,
 
-          session.status,
+            formatMoney(
+              session.playing_amount
+            ),
 
-          session.result_type ??
-            "",
+            voided
+              ? "Voided"
+              : session.status,
 
-          session.result_amount ===
-            null
-            ? ""
-            : formatMoney(
-                session.result_amount
-              ),
+            /*
+              Current counted result.
 
-          session.note ??
-            "",
+              For a voided session we leave
+              this blank because it no longer
+              contributes a real result.
+            */
+            voided
+              ? ""
+              : session.result_type ??
+                "",
 
-          session.ended_at
-            ? formatKathmanduDateTime(
-                session.ended_at
-              )
-            : "",
-        ]
+            voided
+              ? ""
+              : session.result_amount ===
+                  null
+                ? ""
+                : formatMoney(
+                    session.result_amount
+                  ),
+
+            /*
+              Audit copy of the result that
+              existed before the void.
+            */
+            voided
+              ? session.voided_original_result_type ??
+                ""
+              : "",
+
+            voided &&
+            session.voided_original_result_amount !==
+              null
+              ? formatMoney(
+                  session.voided_original_result_amount
+                )
+              : "",
+
+            session.void_reason ??
+              "",
+
+            session.voided_at
+              ? formatKathmanduDateTime(
+                  session.voided_at
+                )
+              : "",
+
+            session.note ??
+              "",
+
+            session.ended_at
+              ? formatKathmanduDateTime(
+                  session.ended_at
+                )
+              : "",
+          ];
+        }
       );
 
   const csv =
@@ -339,6 +422,10 @@ async function exportGames(
         "Status",
         "Result",
         "Result Amount NPR",
+        "Original Result Before Void",
+        "Original Result Amount NPR",
+        "Void Reason",
+        "Voided At",
         "Note",
         "Ended At",
       ],
@@ -357,7 +444,8 @@ async function exportLending(
       typeof createClient
     >
   >,
-  monthKey: string
+  monthKey:
+    string
 ) {
   const [
     peopleResult,
@@ -385,6 +473,14 @@ async function exportLending(
           name
         `),
 
+      /*
+        Voided sessions are intentionally
+        still included here.
+
+        A loan historically linked to a
+        session remains linked to that
+        audit record.
+      */
       supabase
         .from(
           "game_sessions"
@@ -430,7 +526,9 @@ async function exportLending(
     loansResult.error ??
     repaymentsResult.error;
 
-  if (error) {
+  if (
+    error
+  ) {
     return csvError(
       error.message
     );
@@ -442,7 +540,9 @@ async function exportLending(
         peopleResult.data ??
         []
       ).map(
-        (person) => [
+        (
+          person
+        ) => [
           person.id,
           person.name,
         ]
@@ -455,7 +555,9 @@ async function exportLending(
         accountsResult.data ??
         []
       ).map(
-        (account) => [
+        (
+          account
+        ) => [
           account.id,
           account.name,
         ]
@@ -468,7 +570,9 @@ async function exportLending(
         sessionsResult.data ??
         []
       ).map(
-        (session) => [
+        (
+          session
+        ) => [
           session.id,
           session.game_type,
         ]
@@ -482,7 +586,9 @@ async function exportLending(
   const loansById =
     new Map(
       loans.map(
-        (loan) => [
+        (
+          loan
+        ) => [
           loan.id,
           loan,
         ]
@@ -490,7 +596,8 @@ async function exportLending(
     );
 
   const movements: {
-    occurredAt: string;
+    occurredAt:
+      string;
 
     row: (
       | string
@@ -499,7 +606,8 @@ async function exportLending(
   }[] = [];
 
   for (
-    const loan of loans
+    const loan
+    of loans
   ) {
     if (
       getKathmanduMonthKey(
@@ -536,12 +644,14 @@ async function exportLending(
 
         accountsById.get(
           loan.source_account_id
-        ) ?? "",
+        ) ??
+          "",
 
         loan.game_session_id
           ? sessionsById.get(
               loan.game_session_id
-            ) ?? ""
+            ) ??
+            ""
           : "",
 
         loan.due_date ??
@@ -600,13 +710,15 @@ async function exportLending(
 
         accountsById.get(
           repayment.to_account_id
-        ) ?? "",
+        ) ??
+          "",
 
         loan
           ?.game_session_id
           ? sessionsById.get(
               loan.game_session_id
-            ) ?? ""
+            ) ??
+            ""
           : "",
 
         loan?.due_date ??
@@ -619,7 +731,10 @@ async function exportLending(
   }
 
   movements.sort(
-    (a, b) =>
+    (
+      a,
+      b
+    ) =>
       new Date(
         a.occurredAt
       ).getTime() -
@@ -643,7 +758,9 @@ async function exportLending(
       ],
 
       movements.map(
-        (movement) =>
+        (
+          movement
+        ) =>
           movement.row
       )
     );
@@ -655,7 +772,9 @@ async function exportLending(
 }
 
 function makeCsv(
-  headers: string[],
+  headers:
+    string[],
+
   rows: (
     | string
     | number
@@ -666,7 +785,9 @@ function makeCsv(
     ...rows,
   ]
     .map(
-      (row) =>
+      (
+        row
+      ) =>
         row
           .map(
             escapeCsvValue
@@ -687,8 +808,8 @@ function escapeCsvValue(
     );
 
   /*
-    Prevent exported user text
-    from becoming spreadsheet formulas.
+    Prevent exported user text from
+    becoming spreadsheet formulas.
   */
   const safeText =
     /^[=+\-@]/.test(
@@ -704,21 +825,20 @@ function escapeCsvValue(
 }
 
 function csvResponse(
-  csv: string,
-  filename: string
+  csv:
+    string,
+
+  filename:
+    string
 ) {
-  /*
-    UTF-8 BOM helps Excel correctly
-    display names and notes containing
-    non-ASCII characters.
-  */
   const body =
     `\uFEFF${csv}`;
 
   return new Response(
     body,
     {
-      status: 200,
+      status:
+        200,
 
       headers: {
         "Content-Type":
@@ -735,12 +855,14 @@ function csvResponse(
 }
 
 function csvError(
-  message: string
+  message:
+    string
 ) {
   return new Response(
     `Could not create export: ${message}`,
     {
-      status: 500,
+      status:
+        500,
 
       headers: {
         "Content-Type":
@@ -763,7 +885,8 @@ function formatMoney(
 }
 
 function formatKathmanduDate(
-  value: string
+  value:
+    string
 ) {
   return new Intl.DateTimeFormat(
     "en-CA",
@@ -787,17 +910,9 @@ function formatKathmanduDate(
   );
 }
 
-/*
-  Short export time:
-
-  Before:
-    09:35:00 AM
-
-  Now:
-    9:35 AM
-*/
 function formatKathmanduTime(
-  value: string
+  value:
+    string
 ) {
   return new Intl.DateTimeFormat(
     "en-US",
@@ -822,7 +937,8 @@ function formatKathmanduTime(
 }
 
 function formatKathmanduDateTime(
-  value: string
+  value:
+    string
 ) {
   return `${formatKathmanduDate(
     value
@@ -863,14 +979,18 @@ function getKathmanduMonthKey(
 
   const year =
     parts.find(
-      (part) =>
+      (
+        part
+      ) =>
         part.type ===
         "year"
     )?.value;
 
   const month =
     parts.find(
-      (part) =>
+      (
+        part
+      ) =>
         part.type ===
         "month"
     )?.value;
@@ -879,8 +999,11 @@ function getKathmanduMonthKey(
 }
 
 function getSafeMonthKey(
-  requested: string,
-  currentMonthKey: string
+  requested:
+    string,
+
+  currentMonthKey:
+    string
 ) {
   if (
     !/^\d{4}-\d{2}$/.test(
@@ -915,8 +1038,10 @@ function getSafeMonthKey(
     !Number.isInteger(
       monthNumber
     ) ||
-    monthNumber < 1 ||
-    monthNumber > 12
+    monthNumber <
+      1 ||
+    monthNumber >
+      12
   ) {
     return currentMonthKey;
   }
@@ -932,7 +1057,8 @@ function getSafeMonthKey(
 }
 
 function isExportType(
-  value: string
+  value:
+    string
 ): value is ExportType {
   return (
     value ===

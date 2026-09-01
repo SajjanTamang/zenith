@@ -89,6 +89,25 @@ type ActivityGameSession = {
   ended_at:
     | string
     | null;
+
+  voided_at?:
+    | string
+    | null;
+
+  void_reason?:
+    | string
+    | null;
+
+  voided_original_result_type?:
+    | "win"
+    | "loss"
+    | "even"
+    | null;
+
+  voided_original_result_amount?:
+    | string
+    | number
+    | null;
 };
 
 type ActivityLoanPerson = {
@@ -368,6 +387,8 @@ export function buildActivityItems(
 
         searchText: [
           "transfer",
+          transaction.category ??
+            "",
           description,
           fromAccount,
           toAccount,
@@ -382,7 +403,15 @@ export function buildActivityItems(
   }
 
   /*
-    Completed game sessions
+    Completed Game Sessions.
+
+    Normal session:
+      show its real result.
+
+    Voided session:
+      preserve it as an audit event,
+      but its current financial amount
+      is NPR 0.00.
   */
   for (
     const session
@@ -390,7 +419,117 @@ export function buildActivityItems(
   ) {
     if (
       session.status !==
-        "completed" ||
+      "completed"
+    ) {
+      continue;
+    }
+
+    const playingAmount =
+      moneyToCents(
+        session.playing_amount
+      );
+
+    /*
+      VOID AUDIT EVENT
+    */
+    if (
+      session.voided_at
+    ) {
+      const originalType =
+        session.voided_original_result_type ??
+        session.result_type;
+
+      const originalAmount =
+        session.voided_original_result_amount ??
+        session.result_amount ??
+        0;
+
+      const originalAmountCents =
+        moneyToCents(
+          originalAmount
+        );
+
+      const originalLabel =
+        originalType ===
+        "win"
+          ? "Win"
+          : originalType ===
+              "loss"
+            ? "Loss"
+            : "Even";
+
+      const descriptionParts = [
+        `Voided ${originalLabel} • Played NPR ${formatCentsPlain(
+          playingAmount
+        )}`,
+      ];
+
+      if (
+        originalType !==
+        "even"
+      ) {
+        descriptionParts.push(
+          `Original result NPR ${formatCentsPlain(
+            originalAmountCents
+          )}`
+        );
+      }
+
+      if (
+        session.void_reason
+      ) {
+        descriptionParts.push(
+          session.void_reason
+        );
+      }
+
+      const description =
+        descriptionParts.join(
+          " • "
+        );
+
+      items.push({
+        id:
+          `session-void-${session.id}`,
+
+        title:
+          `${session.game_type} • Voided`,
+
+        description,
+
+        amountCents:
+          BigInt(0).toString(),
+
+        kind:
+          "game",
+
+        occurredAt:
+          session.voided_at,
+
+        searchText: [
+          "game",
+          "void",
+          "voided",
+          session.game_type,
+          originalLabel,
+          session.void_reason ??
+            "",
+          description,
+        ]
+          .join(" ")
+          .toLowerCase(),
+
+        href:
+          `/sessions/${session.id}`,
+      });
+
+      continue;
+    }
+
+    /*
+      NORMAL COMPLETED RESULT
+    */
+    if (
       session.result_type ===
         null ||
       session.result_amount ===
@@ -421,11 +560,6 @@ export function buildActivityItems(
             "loss"
           ? "Loss"
           : "Even";
-
-    const playingAmount =
-      moneyToCents(
-        session.playing_amount
-      );
 
     const descriptionParts = [
       `${resultLabel} • Played NPR ${formatCentsPlain(
@@ -480,12 +614,9 @@ export function buildActivityItems(
   }
 
   /*
-    Money lent
+    Money lent.
 
     This is NOT an expense.
-
-    The negative amount only means
-    money left an owned account.
   */
   for (
     const loan
@@ -580,12 +711,9 @@ export function buildActivityItems(
   }
 
   /*
-    Loan repayments
+    Loan repayments.
 
     This is NOT income.
-
-    The positive amount only means
-    money returned to an owned account.
   */
   for (
     const repayment
@@ -690,7 +818,7 @@ export function buildActivityItems(
   }
 
   /*
-    Newest activity first
+    Newest activity first.
   */
   return items.sort(
     (
@@ -709,12 +837,18 @@ export function buildActivityItems(
 function formatCentsPlain(
   cents: bigint
 ) {
+  const absolute =
+    cents <
+    BigInt(0)
+      ? -cents
+      : cents;
+
   const whole =
-    cents /
+    absolute /
     BigInt(100);
 
   const decimal =
-    cents %
+    absolute %
     BigInt(100);
 
   return `${whole

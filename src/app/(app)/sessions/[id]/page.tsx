@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   ArrowRight,
+  Ban,
   CalendarDays,
   CircleDot,
   Clock3,
@@ -16,6 +17,14 @@ import {
 import {
   notFound,
 } from "next/navigation";
+
+import {
+  SessionCorrectionForm,
+} from "@/components/sessions/session-correction-form";
+
+import {
+  SessionVoidActions,
+} from "@/components/sessions/session-void-actions";
 
 import {
   loanOutstandingBalance,
@@ -47,7 +56,8 @@ type GameSession = {
     | string
     | number;
 
-  game_type: string;
+  game_type:
+    string;
 
   note:
     | string
@@ -68,10 +78,30 @@ type GameSession = {
     | number
     | null;
 
-  started_at: string;
+  started_at:
+    string;
 
   ended_at:
     | string
+    | null;
+
+  voided_at:
+    | string
+    | null;
+
+  void_reason:
+    | string
+    | null;
+
+  voided_original_result_type:
+    | "win"
+    | "loss"
+    | "even"
+    | null;
+
+  voided_original_result_amount:
+    | string
+    | number
     | null;
 };
 
@@ -133,7 +163,11 @@ export default async function SessionDetailPage({
           result_type,
           result_amount,
           started_at,
-          ended_at
+          ended_at,
+          voided_at,
+          void_reason,
+          voided_original_result_type,
+          voided_original_result_amount
         `)
         .eq(
           "id",
@@ -274,14 +308,14 @@ export default async function SessionDetailPage({
     (repaymentsResult.data ??
       []) as FinanceLoanRepayment[];
 
-  const accountNames =
+  const accountsById =
     new Map(
       accounts.map(
         (
           account
         ) => [
           account.id,
-          account.name,
+          account,
         ]
       )
     );
@@ -303,30 +337,53 @@ export default async function SessionDetailPage({
       session.playing_amount
     );
 
+  const isActive =
+    session.status ===
+    "active";
+
+  const isVoided =
+    Boolean(
+      session.voided_at
+    );
+
   const pnl =
     getSessionPnL(
       session
     );
 
-  const isActive =
-    session.status ===
-    "active";
+  const originalVoidedPnL =
+    isVoided
+      ? getResultPnL(
+          session.voided_original_result_type,
+          session.voided_original_result_amount
+        )
+      : BigInt(0);
+
+  const bankrollAccount =
+    session.bankroll_account_id
+      ? accountsById.get(
+          session.bankroll_account_id
+        )
+      : undefined;
+
+  const fundingAccount =
+    session.funding_account_id
+      ? accountsById.get(
+          session.funding_account_id
+        )
+      : undefined;
 
   const bankrollName =
-    session.bankroll_account_id
-      ? accountNames.get(
-          session.bankroll_account_id
-        ) ??
-        "Unknown account"
-      : "Unknown account";
+    bankrollAccount
+      ?.name ??
+    "Unknown account";
 
   const fundingName =
     session.funding_account_id
-      ? accountNames.get(
-          session.funding_account_id
-        ) ??
+      ? fundingAccount
+          ?.name ??
         "Unknown account"
-      : "Unknown account";
+      : "Legacy session";
 
   const totalLent =
     loans.reduce(
@@ -355,6 +412,97 @@ export default async function SessionDetailPage({
       BigInt(0)
     );
 
+  const hasAutomaticSettlement =
+    Boolean(
+      session.bankroll_account_id &&
+      session.funding_account_id
+    );
+
+  const bankrollArchived =
+    Boolean(
+      bankrollAccount
+        ?.archived_at
+    );
+
+  const fundingArchived =
+    Boolean(
+      fundingAccount
+        ?.archived_at
+    );
+
+  /*
+    Money corrections need both automatic
+    settlement accounts to remain active.
+  */
+  const canCorrectMoney =
+    hasAutomaticSettlement &&
+    !bankrollArchived &&
+    !fundingArchived;
+
+  let moneyCorrectionReason:
+    | string
+    | null =
+      null;
+
+  if (
+    !hasAutomaticSettlement
+  ) {
+    moneyCorrectionReason =
+      "This older session does not have an automatic settlement account. Its game name and note can still be corrected, but its P&L cannot be changed automatically.";
+  } else if (
+    bankrollArchived
+  ) {
+    moneyCorrectionReason =
+      "Restore the Game Bankroll account before changing this session's final result.";
+  } else if (
+    fundingArchived
+  ) {
+    moneyCorrectionReason =
+      "Restore the original funding account before changing this session's final result.";
+  }
+
+  /*
+    If P&L is already zero, voiding needs no
+    money movement and is safe even for a
+    legacy session.
+
+    Non-zero P&L requires the automatic
+    settlement accounts to be active.
+  */
+  const voidNeedsMoney =
+    pnl !==
+    BigInt(0);
+
+  const canVoid =
+    !voidNeedsMoney ||
+    canCorrectMoney;
+
+  let voidBlockedReason:
+    | string
+    | null =
+      null;
+
+  if (
+    voidNeedsMoney
+  ) {
+    if (
+      !hasAutomaticSettlement
+    ) {
+      voidBlockedReason =
+        "This older session has non-zero P&L but no automatic settlement account, so Zenith cannot safely reverse its money.";
+    } else if (
+      bankrollArchived
+    ) {
+      voidBlockedReason =
+        "Restore the Game Bankroll account before voiding this session.";
+    } else if (
+      fundingArchived
+    ) {
+      voidBlockedReason =
+        "Restore the original funding account before voiding this session.";
+    }
+  }
+
   return (
     <div className="pb-24">
       <Link
@@ -378,15 +526,25 @@ export default async function SessionDetailPage({
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-sm)]"
           style={{
             backgroundColor:
-              "var(--surface-secondary)",
+              isVoided
+                ? "var(--negative-soft)"
+                : "var(--surface-secondary)",
 
             color:
-              "var(--primary)",
+              isVoided
+                ? "var(--negative)"
+                : "var(--primary)",
           }}
         >
-          <Gamepad2
-            size={19}
-          />
+          {isVoided ? (
+            <Ban
+              size={19}
+            />
+          ) : (
+            <Gamepad2
+              size={19}
+            />
+          )}
         </div>
 
         <div className="min-w-0 flex-1">
@@ -401,14 +559,26 @@ export default async function SessionDetailPage({
               Game session
             </p>
 
-            <StatusBadge
-              status={
-                session.status
-              }
-            />
+            {isVoided ? (
+              <VoidedBadge />
+            ) : (
+              <StatusBadge
+                status={
+                  session.status
+                }
+              />
+            )}
           </div>
 
-          <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight">
+          <h1
+            className="mt-1 truncate text-2xl font-semibold tracking-tight"
+            style={{
+              color:
+                isVoided
+                  ? "var(--foreground-secondary)"
+                  : "var(--foreground)",
+            }}
+          >
             {session.game_type}
           </h1>
 
@@ -427,7 +597,7 @@ export default async function SessionDetailPage({
         </div>
       </div>
 
-      {/* Result hero */}
+      {/* Result */}
       <section
         className="mt-7 rounded-[var(--radius-lg)] p-5"
         style={{
@@ -435,7 +605,9 @@ export default async function SessionDetailPage({
             "var(--surface)",
 
           border:
-            "1px solid var(--border)",
+            isVoided
+              ? "1px solid var(--negative)"
+              : "1px solid var(--border)",
         }}
       >
         {isActive ? (
@@ -478,6 +650,50 @@ export default async function SessionDetailPage({
               amount
             </p>
           </>
+        ) : isVoided ? (
+          <>
+            <div className="flex items-center gap-2">
+              <Ban
+                size={15}
+                style={{
+                  color:
+                    "var(--negative)",
+                }}
+              />
+
+              <p
+                className="text-[10px] font-semibold uppercase tracking-[0.14em]"
+                style={{
+                  color:
+                    "var(--negative)",
+                }}
+              >
+                Voided session
+              </p>
+            </div>
+
+            <p
+              className="mt-4 text-3xl font-semibold tracking-[-0.03em] tabular-nums"
+              style={{
+                color:
+                  "var(--foreground-muted)",
+              }}
+            >
+              NPR 0.00
+            </p>
+
+            <p
+              className="mt-2 text-[10px]"
+              style={{
+                color:
+                  "var(--foreground-muted)",
+              }}
+            >
+              No longer counted
+              toward Game P&amp;L
+              or performance.
+            </p>
+          </>
         ) : (
           <>
             <p
@@ -518,6 +734,77 @@ export default async function SessionDetailPage({
           </>
         )}
       </section>
+
+      {/* Void Audit */}
+      {isVoided && (
+        <section className="mt-7">
+          <p
+            className="text-[10px] font-medium uppercase tracking-[0.14em]"
+            style={{
+              color:
+                "var(--foreground-muted)",
+            }}
+          >
+            Void audit
+          </p>
+
+          <div
+            className="mt-3 overflow-hidden rounded-[var(--radius-lg)]"
+            style={{
+              backgroundColor:
+                "var(--surface)",
+
+              border:
+                "1px solid var(--border)",
+            }}
+          >
+            <DetailRow
+              icon={
+                <Gamepad2
+                  size={15}
+                />
+              }
+              label="Original result"
+              value={
+                formatSignedMoney(
+                  originalVoidedPnL
+                )
+              }
+            />
+
+            <DetailRow
+              icon={
+                <CalendarDays
+                  size={15}
+                />
+              }
+              label="Voided"
+              value={
+                session.voided_at
+                  ? formatKathmanduDateTime(
+                      session.voided_at
+                    )
+                  : "Unknown"
+              }
+              borderTop
+            />
+
+            <DetailRow
+              icon={
+                <StickyNote
+                  size={15}
+                />
+              }
+              label="Reason"
+              value={
+                session.void_reason ??
+                "No reason recorded"
+              }
+              borderTop
+            />
+          </div>
+        </section>
+      )}
 
       {/* Details */}
       <section className="mt-7">
@@ -692,7 +979,7 @@ export default async function SessionDetailPage({
         </section>
       )}
 
-      {/* Lending */}
+      {/* Related lending */}
       <section className="mt-7">
         <div className="flex items-center justify-between gap-4">
           <p
@@ -922,6 +1209,62 @@ export default async function SessionDetailPage({
         )}
       </section>
 
+      {/* Completed session correction */}
+      {!isActive &&
+        !isVoided &&
+        session.result_type && (
+          <SessionCorrectionForm
+            key={`${session.game_type}-${session.note ?? ""}-${session.result_type}-${session.result_amount ?? 0}`}
+            sessionId={
+              session.id
+            }
+            initialGameType={
+              session.game_type
+            }
+            initialNote={
+              session.note
+            }
+            initialResultType={
+              session.result_type
+            }
+            initialResultAmount={
+              session.result_amount ??
+              0
+            }
+            playingAmount={
+              session.playing_amount
+            }
+            canCorrectMoney={
+              canCorrectMoney
+            }
+            moneyCorrectionReason={
+              moneyCorrectionReason
+            }
+          />
+        )}
+
+      {/* Void completed session */}
+      {!isActive &&
+        !isVoided && (
+          <SessionVoidActions
+            sessionId={
+              session.id
+            }
+            gameType={
+              session.game_type
+            }
+            currentPnLCents={
+              pnl.toString()
+            }
+            canVoid={
+              canVoid
+            }
+            blockedReason={
+              voidBlockedReason
+            }
+          />
+        )}
+
       {/* Active actions */}
       {isActive && (
         <section className="mt-7">
@@ -990,7 +1333,7 @@ export default async function SessionDetailPage({
                 size={15}
                 style={{
                   color:
-                    "var(--foreground-muted)",
+                    "var(--primary)",
                 }}
               />
             </Link>
@@ -1062,9 +1405,14 @@ function DetailRow({
   icon:
     React.ReactNode;
 
-  label: string;
-  value: string;
-  borderTop?: boolean;
+  label:
+    string;
+
+  value:
+    string;
+
+  borderTop?:
+    boolean;
 }) {
   return (
     <div
@@ -1100,7 +1448,7 @@ function DetailRow({
           {label}
         </p>
 
-        <p className="mt-1 truncate text-sm font-semibold">
+        <p className="mt-1 break-words text-sm font-semibold">
           {value}
         </p>
       </div>
@@ -1113,9 +1461,14 @@ function MiniMetric({
   value,
   highlight = false,
 }: {
-  label: string;
-  value: string;
-  highlight?: boolean;
+  label:
+    string;
+
+  value:
+    string;
+
+  highlight?:
+    boolean;
 }) {
   return (
     <div>
@@ -1176,6 +1529,23 @@ function StatusBadge({
   );
 }
 
+function VoidedBadge() {
+  return (
+    <span
+      className="rounded-full px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.08em]"
+      style={{
+        backgroundColor:
+          "var(--negative-soft)",
+
+        color:
+          "var(--negative)",
+      }}
+    >
+      VOIDED
+    </span>
+  );
+}
+
 function ResultBadge({
   result,
 }: {
@@ -1225,14 +1595,39 @@ function ResultBadge({
 }
 
 function getSessionPnL(
-  session: GameSession
+  session:
+    GameSession
 ) {
   if (
+    session.voided_at ||
     session.status !==
-      "completed" ||
-    session.result_type ===
+      "completed"
+  ) {
+    return BigInt(0);
+  }
+
+  return getResultPnL(
+    session.result_type,
+    session.result_amount
+  );
+}
+
+function getResultPnL(
+  resultType:
+    | "win"
+    | "loss"
+    | "even"
+    | null,
+
+  resultAmount:
+    | string
+    | number
+    | null
+) {
+  if (
+    resultType ===
       null ||
-    session.result_amount ===
+    resultAmount ===
       null
   ) {
     return BigInt(0);
@@ -1240,18 +1635,18 @@ function getSessionPnL(
 
   const amount =
     moneyToCents(
-      session.result_amount
+      resultAmount
     );
 
   if (
-    session.result_type ===
+    resultType ===
     "win"
   ) {
     return amount;
   }
 
   if (
-    session.result_type ===
+    resultType ===
     "loss"
   ) {
     return -amount;
@@ -1261,7 +1656,8 @@ function getSessionPnL(
 }
 
 function formatSignedMoney(
-  value: bigint
+  value:
+    bigint
 ) {
   if (
     value >
@@ -1285,7 +1681,8 @@ function formatSignedMoney(
 }
 
 function formatKathmanduDateTime(
-  value: string
+  value:
+    string
 ) {
   return new Intl.DateTimeFormat(
     "en-US",
@@ -1386,13 +1783,15 @@ function formatDurationMilliseconds(
     60;
 
   if (
-    hours === 0
+    hours ===
+    0
   ) {
     return `${minutes} min`;
   }
 
   if (
-    minutes === 0
+    minutes ===
+    0
   ) {
     return `${hours} hr`;
   }

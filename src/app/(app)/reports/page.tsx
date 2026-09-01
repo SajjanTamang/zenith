@@ -65,6 +65,10 @@ type ReportGameSession = {
 
   started_at:
     string;
+
+  voided_at:
+    | string
+    | null;
 };
 
 type ReportLoan = {
@@ -145,7 +149,8 @@ export default async function ReportsPage({
           status,
           result_type,
           result_amount,
-          started_at
+          started_at,
+          voided_at
         `),
 
       supabase
@@ -173,7 +178,9 @@ export default async function ReportsPage({
     loansResult.error ??
     repaymentsResult.error;
 
-  if (error) {
+  if (
+    error
+  ) {
     return (
       <div>
         <p
@@ -200,7 +207,8 @@ export default async function ReportsPage({
               "var(--negative)",
           }}
         >
-          Could not load reports:{" "}
+          Could not load
+          reports:{" "}
           {error.message}
         </div>
       </div>
@@ -234,6 +242,14 @@ export default async function ReportsPage({
         selectedMonthKey
     );
 
+  /*
+    Keep all monthly sessions here so
+    the report can still understand which
+    records belong to the month.
+
+    countedMonthlySessions excludes voided
+    sessions from report statistics.
+  */
   const monthlySessions =
     sessions.filter(
       (
@@ -243,6 +259,14 @@ export default async function ReportsPage({
           session.started_at
         ) ===
         selectedMonthKey
+    );
+
+  const countedMonthlySessions =
+    monthlySessions.filter(
+      (
+        session
+      ) =>
+        !session.voided_at
     );
 
   const monthlyLoans =
@@ -279,8 +303,12 @@ export default async function ReportsPage({
       "expense"
     );
 
+  /*
+    Voided sessions contribute NPR 0
+    to report Game P&L.
+  */
   const gamePnL =
-    monthlySessions.reduce(
+    countedMonthlySessions.reduce(
       (
         total,
         session
@@ -341,8 +369,8 @@ export default async function ReportsPage({
           }}
         >
           Review your finances
-          month by month and export
-          your records.
+          month by month and
+          export your records.
         </p>
       </section>
 
@@ -544,7 +572,7 @@ export default async function ReportsPage({
             }
             label="Game Sessions"
             count={
-              monthlySessions.length
+              countedMonthlySessions.length
             }
           />
 
@@ -603,7 +631,7 @@ export default async function ReportsPage({
           <ExportRow
             href={`/reports/export/games?month=${selectedMonthKey}`}
             label="Game Sessions CSV"
-            description="Playing amounts and session results."
+            description="Sessions, results and void audit history."
             borderTop
           />
 
@@ -622,9 +650,12 @@ export default async function ReportsPage({
               "var(--foreground-muted)",
           }}
         >
-          Exports use the selected
-          report month and Kathmandu
-          timezone.
+          Exports use the
+          selected report month
+          and Kathmandu timezone.
+          Voided Game Sessions
+          remain in the Games CSV
+          for audit history.
         </p>
       </section>
     </div>
@@ -696,7 +727,9 @@ function SummaryRow({
       "var(--negative)";
   }
 
-  if (signed) {
+  if (
+    signed
+  ) {
     if (
       value >
       BigInt(0)
@@ -941,6 +974,7 @@ function getGameSessionPnL(
     ReportGameSession
 ) {
   if (
+    session.voided_at ||
     session.status !==
       "completed" ||
     session.result_type ===
@@ -1129,7 +1163,9 @@ function shiftMonthKey(
   ] =
     monthKey
       .split("-")
-      .map(Number);
+      .map(
+        Number
+      );
 
   const date =
     new Date(
@@ -1171,7 +1207,9 @@ function formatMonthLabel(
   ] =
     monthKey
       .split("-")
-      .map(Number);
+      .map(
+        Number
+      );
 
   const date =
     new Date(
@@ -1211,10 +1249,14 @@ function firstSearchParam(
       value
     )
   ) {
-    return value[0] ??
-      "";
+    return (
+      value[0] ??
+      ""
+    );
   }
 
-  return value ??
-    "";
+  return (
+    value ??
+    ""
+  );
 }

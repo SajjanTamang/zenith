@@ -38,6 +38,8 @@ import {
 import {
   calculateGameAnalytics,
   getCurrentMonthGameAnalytics,
+  isCountedCompletedGameSession,
+  isVoidedGameSession,
   kathmanduMonthKey,
   type AnalyticsGameSession,
 } from "@/lib/game-analytics";
@@ -90,6 +92,25 @@ type DashboardGameSession =
 
       ended_at:
         | string
+        | null;
+
+      voided_at:
+        | string
+        | null;
+
+      void_reason:
+        | string
+        | null;
+
+      voided_original_result_type:
+        | "win"
+        | "loss"
+        | "even"
+        | null;
+
+      voided_original_result_amount:
+        | string
+        | number
         | null;
     };
 
@@ -190,7 +211,11 @@ export default async function DashboardPage({
           result_type,
           result_amount,
           started_at,
-          ended_at
+          ended_at,
+          voided_at,
+          void_reason,
+          voided_original_result_type,
+          voided_original_result_amount
         `),
 
       supabase
@@ -239,7 +264,9 @@ export default async function DashboardPage({
     loansResult.error ??
     repaymentsResult.error;
 
-  if (error) {
+  if (
+    error
+  ) {
     return (
       <div>
         <p
@@ -299,15 +326,16 @@ export default async function DashboardPage({
       []) as DashboardLoanRepayment[];
 
   /*
-    Available account balances:
+    Account balance calculation still receives
+    every Game Session.
 
-    Opening balance
-    + Income
-    - Expenses
-    +/- Transfers
-    +/- Game P&L
-    - Money lent
-    + Loan repayments
+    This is correct because a voided session's
+    CURRENT stored result is EVEN / 0 and its
+    balance correction transfer is stored in
+    transactions.
+
+    Therefore finance.ts sees the correct
+    current account money.
   */
   const accountBalances =
     calculateAccountBalances(
@@ -318,28 +346,17 @@ export default async function DashboardPage({
       typedRepayments
     );
 
-  /*
-    Money currently available
-    inside owned accounts.
-  */
   const availableBalance =
     totalBalanceFromAccounts(
       accountBalances
     );
 
-  /*
-    Money currently owed back.
-  */
   const outstandingLending =
     totalOutstandingLoans(
       typedLoans,
       typedRepayments
     );
 
-  /*
-    Available money
-    + outstanding lending.
-  */
   const netWorth =
     totalNetWorth(
       accountBalances,
@@ -347,15 +364,11 @@ export default async function DashboardPage({
       typedRepayments
     );
 
-  /*
-    Lending summary.
-
-    This remains exactly the same
-    as the previous Dashboard.
-  */
   const outstandingLoans =
     typedLoans.filter(
-      (loan) =>
+      (
+        loan
+      ) =>
         loanOutstandingBalance(
           loan,
           typedRepayments
@@ -369,7 +382,9 @@ export default async function DashboardPage({
   const outstandingPeopleCount =
     new Set(
       outstandingLoans.map(
-        (loan) =>
+        (
+          loan
+        ) =>
           loan.person_id
       )
     ).size;
@@ -381,7 +396,9 @@ export default async function DashboardPage({
     totalTransactionsByType(
       typedTransactions,
       "income",
-      (transaction) =>
+      (
+        transaction
+      ) =>
         Boolean(
           transaction.occurred_at &&
             isInCurrentKathmanduMonth(
@@ -397,7 +414,9 @@ export default async function DashboardPage({
     totalTransactionsByType(
       typedTransactions,
       "expense",
-      (transaction) =>
+      (
+        transaction
+      ) =>
         Boolean(
           transaction.occurred_at &&
             isInCurrentKathmanduMonth(
@@ -407,7 +426,7 @@ export default async function DashboardPage({
     );
 
   /*
-    Current available Game Bankroll.
+    Current Game Bankroll account balance.
   */
   const bankroll =
     totalAccountTypeBalance(
@@ -417,10 +436,8 @@ export default async function DashboardPage({
     );
 
   /*
-    Current month analytics.
-
-    These numbers remain current even
-    while browsing an older calendar.
+    Shared analytics now automatically
+    exclude voided sessions.
   */
   const thisMonthGame =
     getCurrentMonthGameAnalytics(
@@ -428,14 +445,19 @@ export default async function DashboardPage({
     );
 
   /*
-    Only the calendar uses the
-    selected historical month.
+    Only the selected historical month
+    is passed to the calendar analytics.
+
+    Voided sessions are explicitly excluded.
   */
   const selectedMonthSessions =
     typedGameSessions.filter(
-      (session) =>
-        session.status ===
-          "completed" &&
+      (
+        session
+      ) =>
+        isCountedCompletedGameSession(
+          session
+        ) &&
         kathmanduMonthKey(
           session.started_at
         ) ===
@@ -448,14 +470,14 @@ export default async function DashboardPage({
     );
 
   /*
-    Current monthly financial movement:
+    Current monthly movement:
 
-    Income
-    - Expenses
-    + Game P&L
+      Income
+      - Expenses
+      + real Game P&L
 
-    Loans, repayments and transfers
-    are intentionally excluded.
+    Voided Game Sessions contribute zero
+    because the analytics helper excludes them.
   */
   const monthlyNetMovement =
     monthlyIncome -
@@ -463,13 +485,29 @@ export default async function DashboardPage({
     thisMonthGame.totalPnL;
 
   /*
-    Unified newest-first timeline.
+    Until the central Activity helper is
+    updated in the next checkpoint, prevent
+    a voided Game Session from appearing as
+    a normal game-result Activity item here.
+
+    Its protected correction transaction
+    remains part of the financial audit trail.
   */
+  const activityGameSessions =
+    typedGameSessions.filter(
+      (
+        session
+      ) =>
+        !isVoidedGameSession(
+          session
+        )
+    );
+
   const recentActivity =
     buildActivityItems(
       typedAccounts,
       typedTransactions,
-      typedGameSessions,
+      activityGameSessions,
       typedLoanPeople,
       typedLoans,
       typedRepayments
@@ -594,13 +632,6 @@ export default async function DashboardPage({
         </div>
       </section>
 
-      {/*
-        Lending display and logic remain
-        exactly as before.
-
-        This section only appears when
-        money is currently owed.
-      */}
       {outstandingLending >
         BigInt(0) && (
         <section className="mt-8">
@@ -624,7 +655,6 @@ export default async function DashboardPage({
                 "1px solid var(--border)",
             }}
           >
-            {/* Money lent */}
             <Link
               href="/lending"
               className="flex items-center gap-3 px-4 py-4 transition"
@@ -690,7 +720,6 @@ export default async function DashboardPage({
               />
             </Link>
 
-            {/* Net worth */}
             <div
               className="flex items-center justify-between gap-5 px-4 py-4"
               style={{
@@ -752,7 +781,7 @@ export default async function DashboardPage({
         />
       </section>
 
-      {/* Recent activity */}
+      {/* Recent Activity */}
       <section
         className="mt-8 border-t pt-7"
         style={{
@@ -882,7 +911,9 @@ function DashboardMetric({
       "var(--negative)";
   }
 
-  if (signed) {
+  if (
+    signed
+  ) {
     if (
       value >
       BigInt(0)
@@ -1297,12 +1328,14 @@ function getLendingSummary(
   }
 
   const loanLabel =
-    loanCount === 1
+    loanCount ===
+    1
       ? "loan"
       : "loans";
 
   const peopleLabel =
-    peopleCount === 1
+    peopleCount ===
+    1
       ? "person"
       : "people";
 
@@ -1369,7 +1402,9 @@ function getSafeMonthKey(
   ] =
     requested
       .split("-")
-      .map(Number);
+      .map(
+        Number
+      );
 
   if (
     !Number.isInteger(

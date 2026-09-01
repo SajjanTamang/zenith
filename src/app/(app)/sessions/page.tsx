@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import {
   ArrowRight,
+  Ban,
   ChevronRight,
   CircleDot,
   Eye,
@@ -11,6 +12,8 @@ import {
 
 import {
   getCurrentMonthGameAnalytics,
+  getSessionPnL,
+  isVoidedGameSession,
   kathmanduDateKey,
   type AnalyticsGameSession,
 } from "@/lib/game-analytics";
@@ -34,6 +37,25 @@ type GameSession =
 
     note:
       | string
+      | null;
+
+    voided_at:
+      | string
+      | null;
+
+    void_reason:
+      | string
+      | null;
+
+    voided_original_result_type:
+      | "win"
+      | "loss"
+      | "even"
+      | null;
+
+    voided_original_result_amount:
+      | string
+      | number
       | null;
   };
 
@@ -65,7 +87,11 @@ export default async function SessionsPage() {
         result_type,
         result_amount,
         started_at,
-        ended_at
+        ended_at,
+        voided_at,
+        void_reason,
+        voided_original_result_type,
+        voided_original_result_amount
       `)
       .order(
         "started_at",
@@ -125,6 +151,13 @@ export default async function SessionsPage() {
         "active"
     );
 
+  /*
+    Session History intentionally keeps
+    voided sessions.
+
+    A void is an audit event, not a
+    physical database deletion.
+  */
   const completedSessions =
     typedSessions.filter(
       (
@@ -134,11 +167,39 @@ export default async function SessionsPage() {
         "completed"
     );
 
+  const countedCompletedSessions =
+    completedSessions.filter(
+      (
+        session
+      ) =>
+        !isVoidedGameSession(
+          session
+        )
+    );
+
+  const voidedSessions =
+    completedSessions.filter(
+      (
+        session
+      ) =>
+        isVoidedGameSession(
+          session
+        )
+    );
+
+  /*
+    Analytics helper automatically
+    excludes voided sessions.
+  */
   const thisMonth =
     getCurrentMonthGameAnalytics(
       typedSessions
     );
 
+  /*
+    History keeps both normal and voided
+    sessions for audit visibility.
+  */
   const historyGroups =
     groupSessionsByDate(
       completedSessions
@@ -249,26 +310,37 @@ export default async function SessionsPage() {
 
       {/* History */}
       <section className="mt-9">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <SectionLabel>
             Session history
           </SectionLabel>
 
-          <span
-            className="text-[10px]"
+          <div
+            className="text-right text-[10px]"
             style={{
               color:
                 "var(--foreground-muted)",
             }}
           >
-            {
-              completedSessions.length
-            }{" "}
-            {completedSessions.length ===
-            1
-              ? "session"
-              : "sessions"}
-          </span>
+            <span>
+              {
+                countedCompletedSessions.length
+              }{" "}
+              counted
+            </span>
+
+            {voidedSessions.length >
+              0 && (
+              <span>
+                {" "}
+                •{" "}
+                {
+                  voidedSessions.length
+                }{" "}
+                voided
+              </span>
+            )}
+          </div>
         </div>
 
         {completedSessions.length ===
@@ -392,7 +464,8 @@ function EmptyActiveSession() {
 function ActiveSessionCard({
   session,
 }: {
-  session: GameSession;
+  session:
+    GameSession;
 }) {
   const lendHref =
     `/quick-add?type=lend&session=${encodeURIComponent(
@@ -560,7 +633,8 @@ function ActiveSessionCard({
 function SessionHistoryGroup({
   group,
 }: {
-  group: SessionGroup;
+  group:
+    SessionGroup;
 }) {
   return (
     <div>
@@ -612,9 +686,17 @@ function SessionHistoryRow({
   session,
   borderTop = false,
 }: {
-  session: GameSession;
-  borderTop?: boolean;
+  session:
+    GameSession;
+
+  borderTop?:
+    boolean;
 }) {
+  const voided =
+    isVoidedGameSession(
+      session
+    );
+
   const pnl =
     getSessionPnL(
       session
@@ -631,14 +713,32 @@ function SessionHistoryRow({
           borderTop
             ? "1px solid var(--border)"
             : undefined,
+
+        opacity:
+          voided
+            ? 0.72
+            : 1,
       }}
     >
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold">
-          {
-            session.game_type
-          }
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="truncate text-sm font-semibold">
+            {
+              session.game_type
+            }
+          </p>
+
+          {voided && (
+            <Ban
+              size={13}
+              className="shrink-0"
+              style={{
+                color:
+                  "var(--negative)",
+              }}
+            />
+          )}
+        </div>
 
         <p
           className="mt-1 text-[10px]"
@@ -655,33 +755,67 @@ function SessionHistoryRow({
           )}
         </p>
 
-        {session.note && (
+        {voided ? (
           <p
             className="mt-2 truncate text-[10px]"
             style={{
               color:
-                "var(--foreground-muted)",
+                "var(--negative)",
             }}
           >
-            {session.note}
+            {session.void_reason
+              ? `Voided: ${session.void_reason}`
+              : "Voided session"}
           </p>
+        ) : (
+          session.note && (
+            <p
+              className="mt-2 truncate text-[10px]"
+              style={{
+                color:
+                  "var(--foreground-muted)",
+              }}
+            >
+              {session.note}
+            </p>
+          )
         )}
       </div>
 
       <div className="shrink-0 text-right">
-        <SignedMoney
-          value={
-            pnl
-          }
-        />
+        {voided ? (
+          <>
+            <span
+              className="text-sm font-semibold tabular-nums"
+              style={{
+                color:
+                  "var(--foreground-muted)",
+              }}
+            >
+              NPR 0.00
+            </span>
 
-        <div className="mt-2 flex justify-end">
-          <ResultBadge
-            result={
-              session.result_type
-            }
-          />
-        </div>
+            <div className="mt-2 flex justify-end">
+              <VoidedBadge />
+            </div>
+          </>
+        ) : (
+          <>
+            <SignedMoney
+              value={
+                pnl
+              }
+            />
+
+            <div className="mt-2 flex justify-end">
+              <ResultBadge
+                result={
+                  session.result_type
+                }
+              />
+            </div>
+          </>
+        )}
       </div>
 
       <ChevronRight
@@ -693,6 +827,23 @@ function SessionHistoryRow({
         }}
       />
     </Link>
+  );
+}
+
+function VoidedBadge() {
+  return (
+    <span
+      className="rounded-full px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.08em]"
+      style={{
+        backgroundColor:
+          "var(--negative-soft)",
+
+        color:
+          "var(--negative)",
+      }}
+    >
+      VOIDED
+    </span>
   );
 }
 
@@ -749,7 +900,9 @@ function SummaryMetric({
   value,
 }: {
   label: string;
-  value: React.ReactNode;
+
+  value:
+    React.ReactNode;
 }) {
   return (
     <div>
@@ -792,7 +945,8 @@ function SectionLabel({
 function SignedMoney({
   value,
 }: {
-  value: bigint;
+  value:
+    bigint;
 }) {
   const positive =
     value >
@@ -836,44 +990,9 @@ function SignedMoney({
   );
 }
 
-function getSessionPnL(
-  session: GameSession
-) {
-  if (
-    session.status !==
-      "completed" ||
-    session.result_type ===
-      null ||
-    session.result_amount ===
-      null
-  ) {
-    return BigInt(0);
-  }
-
-  const amount =
-    moneyToCents(
-      session.result_amount
-    );
-
-  if (
-    session.result_type ===
-    "win"
-  ) {
-    return amount;
-  }
-
-  if (
-    session.result_type ===
-    "loss"
-  ) {
-    return -amount;
-  }
-
-  return BigInt(0);
-}
-
 function groupSessionsByDate(
-  sessions: GameSession[]
+  sessions:
+    GameSession[]
 ) {
   const groups =
     new Map<
@@ -893,7 +1012,8 @@ function groupSessionsByDate(
     const existing =
       groups.get(
         dateKey
-      ) ?? [];
+      ) ??
+      [];
 
     existing.push(
       session
@@ -927,7 +1047,8 @@ function groupSessionsByDate(
 }
 
 function formatSessionGroupDate(
-  value: string
+  value:
+    string
 ) {
   return new Intl.DateTimeFormat(
     "en-US",
@@ -952,7 +1073,8 @@ function formatSessionGroupDate(
 }
 
 function formatSessionDateTime(
-  value: string
+  value:
+    string
 ) {
   return new Intl.DateTimeFormat(
     "en-US",
