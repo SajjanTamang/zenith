@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   useMemo,
   useState,
@@ -615,13 +617,6 @@ function ActivityRow({
       item.amountCents
     );
 
-  /*
-    Blue = Lending.
-
-    We keep both loans and repayments blue
-    so they are never confused with
-    expenses or income.
-  */
   const amountColor =
     item.kind ===
       "loan" ||
@@ -645,16 +640,8 @@ function ActivityRow({
       amount
     );
 
-  return (
-    <article
-      className="flex items-center gap-3 px-4 py-4"
-      style={{
-        borderTop:
-          borderTop
-            ? "1px solid var(--border)"
-            : undefined,
-      }}
-    >
+  const content = (
+    <>
       <ActivityIcon
         kind={
           item.kind
@@ -680,29 +667,77 @@ function ActivityRow({
         </p>
       </div>
 
-      <div className="shrink-0 text-right">
-        <p
-          className="text-xs font-semibold tabular-nums"
-          style={{
-            color:
-              amountColor,
-          }}
-        >
-          {amountText}
-        </p>
+      <div className="flex shrink-0 items-center gap-2">
+        <div className="text-right">
+          <p
+            className="text-xs font-semibold tabular-nums"
+            style={{
+              color:
+                amountColor,
+            }}
+          >
+            {amountText}
+          </p>
 
-        <p
-          className="mt-1 text-[10px]"
-          style={{
-            color:
-              "var(--foreground-muted)",
-          }}
-        >
-          {formatKathmanduTime(
-            item.occurredAt
-          )}
-        </p>
+          <p
+            className="mt-1 text-[10px]"
+            style={{
+              color:
+                "var(--foreground-muted)",
+            }}
+          >
+            {formatKathmanduTime(
+              item.occurredAt
+            )}
+          </p>
+        </div>
+
+        {item.href && (
+          <ChevronRight
+            size={14}
+            style={{
+              color:
+                "var(--foreground-muted)",
+            }}
+          />
+        )}
       </div>
+    </>
+  );
+
+  const rowStyle = {
+    borderTop:
+      borderTop
+        ? "1px solid var(--border)"
+        : undefined,
+  };
+
+  if (
+    item.href
+  ) {
+    return (
+      <Link
+        href={
+          item.href
+        }
+        className="flex items-center gap-3 px-4 py-4 transition hover:brightness-[0.98]"
+        style={
+          rowStyle
+        }
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <article
+      className="flex items-center gap-3 px-4 py-4"
+      style={
+        rowStyle
+      }
+    >
+      {content}
     </article>
   );
 }
@@ -722,9 +757,6 @@ function ActivityIcon({
   let color =
     "var(--foreground-secondary)";
 
-  /*
-    Income
-  */
   if (
     kind ===
     "income"
@@ -738,9 +770,6 @@ function ActivityIcon({
       "var(--positive)";
   }
 
-  /*
-    Expense
-  */
   if (
     kind ===
     "expense"
@@ -754,9 +783,6 @@ function ActivityIcon({
       "var(--negative)";
   }
 
-  /*
-    Game
-  */
   if (
     kind ===
     "game"
@@ -776,11 +802,6 @@ function ActivityIcon({
           : "var(--foreground-secondary)";
   }
 
-  /*
-    Money lent:
-
-    Hand + arrow pointing outward.
-  */
   if (
     kind ===
     "loan"
@@ -803,11 +824,6 @@ function ActivityIcon({
       "var(--primary)";
   }
 
-  /*
-    Repayment:
-
-    Hand + arrow pointing inward.
-  */
   if (
     kind ===
     "repayment"
@@ -1270,10 +1286,6 @@ function formatActivityAmount(
       ? -value
       : value;
 
-  /*
-    Transfers have no
-    positive/negative meaning.
-  */
   if (
     kind ===
     "transfer"
@@ -1283,10 +1295,6 @@ function formatActivityAmount(
     )}`;
   }
 
-  /*
-    Loan:
-    cash left the account.
-  */
   if (
     kind ===
     "loan"
@@ -1296,10 +1304,6 @@ function formatActivityAmount(
     )}`;
   }
 
-  /*
-    Repayment:
-    cash returned to the account.
-  */
   if (
     kind ===
     "repayment"

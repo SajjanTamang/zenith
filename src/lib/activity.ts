@@ -18,6 +18,7 @@ export type ActivityItem = {
   kind: ActivityKind;
   occurredAt: string;
   searchText: string;
+  href: string | null;
 };
 
 type ActivityAccount = {
@@ -247,6 +248,9 @@ export function buildActivityItems(
         ]
           .join(" ")
           .toLowerCase(),
+
+        href:
+          `/activity/transactions/${transaction.id}`,
       });
     }
 
@@ -299,6 +303,9 @@ export function buildActivityItems(
         ]
           .join(" ")
           .toLowerCase(),
+
+        href:
+          `/activity/transactions/${transaction.id}`,
       });
     }
 
@@ -359,6 +366,9 @@ export function buildActivityItems(
         ]
           .join(" ")
           .toLowerCase(),
+
+        href:
+          `/activity/transactions/${transaction.id}`,
       });
     }
   }
@@ -455,6 +465,8 @@ export function buildActivityItems(
       ]
         .join(" ")
         .toLowerCase(),
+
+      href: null,
     });
   }
 
@@ -550,6 +562,9 @@ export function buildActivityItems(
       ]
         .join(" ")
         .toLowerCase(),
+
+      href:
+        `/lending/${loan.id}`,
     });
   }
 
@@ -655,6 +670,9 @@ export function buildActivityItems(
       ]
         .join(" ")
         .toLowerCase(),
+
+      href:
+        `/lending/${repayment.loan_id}`,
     });
   }
 
