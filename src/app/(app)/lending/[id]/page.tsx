@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   Check,
   HandCoins,
-  RotateCcw,
   StickyNote,
   WalletCards,
 } from "lucide-react";
@@ -13,6 +12,14 @@ import {
 import {
   notFound,
 } from "next/navigation";
+
+import {
+  LoanActions,
+} from "@/components/lending/loan-actions";
+
+import {
+  RepaymentHistoryItem,
+} from "@/components/lending/repayment-history-item";
 
 import {
   RepaymentForm,
@@ -39,6 +46,23 @@ import {
 type Loan =
   FinanceLoan & {
     lent_at: string;
+  };
+
+type Repayment =
+  FinanceLoanRepayment & {
+    id: string;
+    loan_id: string;
+    to_account_id: string;
+
+    amount:
+      | string
+      | number;
+
+    note:
+      | string
+      | null;
+
+    repaid_at: string;
   };
 
 type Person = {
@@ -137,13 +161,6 @@ export default async function LoanDetailPage({
           name
         `),
 
-      /*
-        Keep ALL accounts here.
-
-        Historical loans and repayments
-        may reference an archived account,
-        so we still need its name.
-      */
       supabase
         .from(
           "accounts"
@@ -224,23 +241,76 @@ export default async function LoanDetailPage({
 
   const repayments =
     (repaymentsResult.data ??
-      []) as FinanceLoanRepayment[];
+      []) as Repayment[];
 
   const people =
     (peopleResult.data ??
       []) as Person[];
 
-  /*
-    ALL accounts remain available
-    for historical display.
-  */
   const accounts =
     (accountsResult.data ??
       []) as Account[];
 
+  const person =
+    people.find(
+      (
+        item
+      ) =>
+        item.id ===
+        loan.person_id
+    );
+
+  const sourceAccount =
+    accounts.find(
+      (
+        account
+      ) =>
+        account.id ===
+        loan.source_account_id
+    );
+
+  const sourceAccountArchived =
+    Boolean(
+      sourceAccount
+        ?.archived_at
+    );
+
   /*
-    Only ACTIVE accounts may receive
-    a NEW repayment.
+    Loan editing can use:
+    - all active accounts
+    - the current historical source account
+      even if it has been archived
+  */
+  const loanEditAccounts =
+    accounts
+      .filter(
+        (
+          account
+        ) =>
+          account.archived_at ===
+            null ||
+          account.id ===
+            loan.source_account_id
+      )
+      .map(
+        (
+          account
+        ) => ({
+          id:
+            account.id,
+
+          name:
+            account.name,
+
+          archived:
+            account.archived_at !==
+            null,
+        })
+      );
+
+  /*
+    New repayments can only go
+    into active accounts.
   */
   const repaymentAccounts =
     accounts
@@ -262,24 +332,6 @@ export default async function LoanDetailPage({
             account.name,
         })
       );
-
-  const person =
-    people.find(
-      (
-        item
-      ) =>
-        item.id ===
-        loan.person_id
-    );
-
-  const sourceAccount =
-    accounts.find(
-      (
-        account
-      ) =>
-        account.id ===
-        loan.source_account_id
-    );
 
   let gameSession:
     GameSession |
@@ -373,10 +425,6 @@ export default async function LoanDetailPage({
           ? "rgba(0, 102, 255, 0.10)"
           : "var(--surface-secondary)";
 
-  /*
-    Uses ALL accounts so older repayment
-    history still shows the correct name.
-  */
   const accountNames =
     new Map(
       accounts.map(
@@ -385,6 +433,18 @@ export default async function LoanDetailPage({
         ) => [
           account.id,
           account.name,
+        ]
+      )
+    );
+
+  const accountsById =
+    new Map(
+      accounts.map(
+        (
+          account
+        ) => [
+          account.id,
+          account,
         ]
       )
     );
@@ -437,7 +497,7 @@ export default async function LoanDetailPage({
         </p>
       </div>
 
-      {/* Outstanding hero */}
+      {/* Outstanding */}
       <section
         className="mt-7 rounded-[var(--radius-lg)] p-5"
         style={{
@@ -528,7 +588,7 @@ export default async function LoanDetailPage({
         </div>
       </section>
 
-      {/* Summary */}
+      {/* Loan details */}
       <section className="mt-7">
         <p
           className="text-[10px] font-medium uppercase tracking-[0.14em]"
@@ -671,7 +731,7 @@ export default async function LoanDetailPage({
         </section>
       )}
 
-      {/* Repayment */}
+      {/* New repayment */}
       {!paid &&
         repaymentAccounts.length >
           0 && (
@@ -766,40 +826,112 @@ export default async function LoanDetailPage({
             (
               repayment,
               index
-            ) => (
-              <HistoryRow
-                key={
-                  repayment.id
-                }
-                type="repayment"
-                date={
-                  repayment.repaid_at ??
-                  ""
-                }
-                amount={
-                  moneyToCents(
-                    repayment.amount
+            ) => {
+              const currentAccount =
+                accountsById.get(
+                  repayment.to_account_id
+                );
+
+              const currentRepayment =
+                moneyToCents(
+                  repayment.amount
+                );
+
+              /*
+                The current outstanding
+                already includes this repayment.
+
+                Add the current repayment back
+                to calculate the maximum this
+                individual repayment can become.
+              */
+              const maxAmount =
+                outstanding +
+                currentRepayment;
+
+              /*
+                Repayment editing can choose
+                active accounts.
+
+                Its current historical account
+                stays visible even if archived.
+              */
+              const editorAccounts =
+                accounts
+                  .filter(
+                    (
+                      account
+                    ) =>
+                      account.archived_at ===
+                        null ||
+                      account.id ===
+                        repayment.to_account_id
                   )
-                }
-                accountName={
-                  accountNames.get(
+                  .map(
+                    (
+                      account
+                    ) => ({
+                      id:
+                        account.id,
+
+                      name:
+                        account.name,
+
+                      archived:
+                        account.archived_at !==
+                        null,
+                    })
+                  );
+
+              return (
+                <RepaymentHistoryItem
+                  key={
+                    repayment.id
+                  }
+                  repaymentId={
+                    repayment.id
+                  }
+                  initialAccountId={
                     repayment.to_account_id
-                  ) ??
-                  "Account"
-                }
-                note={
-                  repayment.note
-                }
-                borderTop={
-                  index >
-                  0
-                }
-              />
-            )
+                  }
+                  initialAmount={
+                    repayment.amount
+                  }
+                  initialNote={
+                    repayment.note ??
+                    null
+                  }
+                  repaidAt={
+                    repayment.repaid_at
+                  }
+                  accountName={
+                    accountNames.get(
+                      repayment.to_account_id
+                    ) ??
+                    "Account"
+                  }
+                  accountArchived={
+                    Boolean(
+                      currentAccount
+                        ?.archived_at
+                    )
+                  }
+                  maxAmountCents={
+                    maxAmount.toString()
+                  }
+                  accounts={
+                    editorAccounts
+                  }
+                  borderTop={
+                    index >
+                    0
+                  }
+                />
+              );
+            }
           )}
 
-          <HistoryRow
-            type="loan"
+          <LoanHistoryRow
             date={
               loan.lent_at
             }
@@ -821,6 +953,45 @@ export default async function LoanDetailPage({
           />
         </div>
       </section>
+
+      {/* Loan management */}
+      <LoanActions
+        loanId={
+          loan.id
+        }
+        initialPersonName={
+          person?.name ??
+          ""
+        }
+        initialSourceAccountId={
+          loan.source_account_id
+        }
+        initialPrincipalAmount={
+          String(
+            loan.principal_amount
+          )
+        }
+        initialDueDate={
+          loan.due_date ??
+          null
+        }
+        initialNote={
+          loan.note ??
+          null
+        }
+        totalRepaidCents={
+          returned.toString()
+        }
+        repaymentCount={
+          repayments.length
+        }
+        sourceAccountArchived={
+          sourceAccountArchived
+        }
+        accounts={
+          loanEditAccounts
+        }
+      />
     </div>
   );
 }
@@ -870,18 +1041,13 @@ function SummaryRow({
   );
 }
 
-function HistoryRow({
-  type,
+function LoanHistoryRow({
   date,
   amount,
   accountName,
   note,
   borderTop,
 }: {
-  type:
-    | "loan"
-    | "repayment";
-
   date: string;
   amount: bigint;
   accountName: string;
@@ -892,10 +1058,6 @@ function HistoryRow({
 
   borderTop: boolean;
 }) {
-  const repayment =
-    type ===
-    "repayment";
-
   return (
     <div
       className="flex items-start gap-3 px-4 py-4"
@@ -910,34 +1072,22 @@ function HistoryRow({
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)]"
         style={{
           backgroundColor:
-            repayment
-              ? "var(--positive-soft)"
-              : "var(--surface-secondary)",
+            "var(--surface-secondary)",
 
           color:
-            repayment
-              ? "var(--positive)"
-              : "var(--primary)",
+            "var(--primary)",
         }}
       >
-        {repayment ? (
-          <RotateCcw
-            size={15}
-          />
-        ) : (
-          <WalletCards
-            size={15}
-          />
-        )}
+        <WalletCards
+          size={15}
+        />
       </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-semibold">
-              {repayment
-                ? "Repayment"
-                : "Money lent"}
+              Money lent
             </p>
 
             <p
@@ -955,18 +1105,7 @@ function HistoryRow({
             </p>
           </div>
 
-          <p
-            className="shrink-0 text-sm font-semibold tabular-nums"
-            style={{
-              color:
-                repayment
-                  ? "var(--positive)"
-                  : "var(--foreground)",
-            }}
-          >
-            {repayment
-              ? "+"
-              : ""}
+          <p className="shrink-0 text-sm font-semibold tabular-nums">
             NPR{" "}
             {formatMoneyFromCents(
               amount
@@ -991,8 +1130,7 @@ function HistoryRow({
 }
 
 function formatKathmanduDate(
-  value:
-    string
+  value: string
 ) {
   if (
     !value
@@ -1023,8 +1161,7 @@ function formatKathmanduDate(
 }
 
 function formatDateOnly(
-  value:
-    string
+  value: string
 ) {
   const [
     year,
