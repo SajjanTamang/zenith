@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import {
   Banknote,
+  ChevronRight,
   Gamepad2,
   HandCoins,
   Landmark,
@@ -10,7 +11,9 @@ import {
   WalletCards,
 } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import {
+  createClient,
+} from "@/lib/supabase/server";
 
 import {
   calculateAccountBalances,
@@ -45,68 +48,80 @@ export default async function AccountsPage() {
     gameSessionsResult,
     loansResult,
     repaymentsResult,
-  ] = await Promise.all([
-    supabase
-      .from("accounts")
-      .select(`
-        id,
-        name,
-        account_type,
-        opening_balance,
-        created_at
-      `)
-      .order(
-        "created_at",
-        {
-          ascending: true,
-        }
-      ),
+  ] =
+    await Promise.all([
+      supabase
+        .from(
+          "accounts"
+        )
+        .select(`
+          id,
+          name,
+          account_type,
+          opening_balance,
+          created_at
+        `)
+        .order(
+          "created_at",
+          {
+            ascending:
+              true,
+          }
+        ),
 
-    supabase
-      .from("transactions")
-      .select(`
-        transaction_type,
-        amount,
-        from_account_id,
-        to_account_id,
-        occurred_at
-      `),
+      supabase
+        .from(
+          "transactions"
+        )
+        .select(`
+          transaction_type,
+          amount,
+          from_account_id,
+          to_account_id,
+          occurred_at
+        `),
 
-    supabase
-      .from("game_sessions")
-      .select(`
-        bankroll_account_id,
-        status,
-        result_type,
-        result_amount,
-        started_at,
-        ended_at
-      `),
+      supabase
+        .from(
+          "game_sessions"
+        )
+        .select(`
+          bankroll_account_id,
+          status,
+          result_type,
+          result_amount,
+          started_at,
+          ended_at
+        `),
 
-    supabase
-      .from("loans")
-      .select(`
-        id,
-        person_id,
-        source_account_id,
-        principal_amount,
-        game_session_id,
-        note,
-        lent_at,
-        due_date
-      `),
+      supabase
+        .from(
+          "loans"
+        )
+        .select(`
+          id,
+          person_id,
+          source_account_id,
+          principal_amount,
+          game_session_id,
+          note,
+          lent_at,
+          due_date
+        `),
 
-    supabase
-      .from("loan_repayments")
-      .select(`
-        id,
-        loan_id,
-        to_account_id,
-        amount,
-        note,
-        repaid_at
-      `),
-  ]);
+      supabase
+        .from(
+          "loan_repayments"
+        )
+        .select(`
+          id,
+          loan_id,
+          to_account_id,
+          amount,
+          note,
+          repaid_at
+        `),
+    ]);
 
   const error =
     accountsResult.error ??
@@ -115,7 +130,9 @@ export default async function AccountsPage() {
     loansResult.error ??
     repaymentsResult.error;
 
-  if (error) {
+  if (
+    error
+  ) {
     return (
       <div>
         <p
@@ -137,6 +154,7 @@ export default async function AccountsPage() {
           style={{
             backgroundColor:
               "var(--negative-soft)",
+
             color:
               "var(--negative)",
           }}
@@ -169,17 +187,6 @@ export default async function AccountsPage() {
     (repaymentsResult.data ??
       []) as FinanceLoanRepayment[];
 
-  /*
-    Available account balances:
-
-    Opening balance
-    + Income
-    - Expenses
-    +/- Transfers
-    +/- Game P&L
-    - Money lent
-    + Loan repayments
-  */
   const accountBalances =
     calculateAccountBalances(
       typedAccounts,
@@ -189,29 +196,17 @@ export default async function AccountsPage() {
       typedRepayments
     );
 
-  /*
-    Available balance is money physically
-    available inside the user's accounts.
-  */
   const availableBalance =
     totalBalanceFromAccounts(
       accountBalances
     );
 
-  /*
-    Money currently outside the user's
-    accounts but still owed back to them.
-  */
   const outstandingLending =
     totalOutstandingLoans(
       typedLoans,
       typedRepayments
     );
 
-  /*
-    Net worth includes both available money
-    and money that is currently lent out.
-  */
   const netWorth =
     totalNetWorth(
       accountBalances,
@@ -245,6 +240,7 @@ export default async function AccountsPage() {
           style={{
             backgroundColor:
               "var(--primary)",
+
             color:
               "var(--primary-foreground)",
           }}
@@ -280,6 +276,7 @@ export default async function AccountsPage() {
             style={{
               backgroundColor:
                 "var(--surface)",
+
               border:
                 "1px solid var(--border)",
             }}
@@ -370,7 +367,7 @@ export default async function AccountsPage() {
             </div>
           </section>
 
-          {/* Account list */}
+          {/* Accounts */}
           <section className="mt-8">
             <div className="flex items-center justify-between">
               <h2
@@ -399,7 +396,9 @@ export default async function AccountsPage() {
 
             <div className="mt-3 space-y-2">
               {typedAccounts.map(
-                (account) => {
+                (
+                  account
+                ) => {
                   const currentBalance =
                     accountBalances.get(
                       account.id
@@ -447,11 +446,15 @@ function AccountCard({
       : "var(--foreground)";
 
   return (
-    <div
-      className="flex items-center gap-4 rounded-[var(--radius-lg)] p-4"
+    <Link
+      href={
+        `/accounts/${account.id}`
+      }
+      className="flex items-center gap-4 rounded-[var(--radius-lg)] p-4 transition hover:brightness-[0.98]"
       style={{
         backgroundColor:
           "var(--surface)",
+
         border:
           "1px solid var(--border)",
       }}
@@ -507,7 +510,16 @@ function AccountCard({
             : "Available balance"}
         </p>
       </div>
-    </div>
+
+      <ChevronRight
+        size={15}
+        className="shrink-0"
+        style={{
+          color:
+            "var(--foreground-muted)",
+        }}
+      />
+    </Link>
   );
 }
 
@@ -525,7 +537,8 @@ function AccountIcon({
     "var(--foreground-secondary)";
 
   if (
-    type === "cash"
+    type ===
+    "cash"
   ) {
     icon =
       <Banknote
@@ -534,7 +547,8 @@ function AccountIcon({
   }
 
   if (
-    type === "bank"
+    type ===
+    "bank"
   ) {
     icon =
       <Landmark
@@ -543,7 +557,8 @@ function AccountIcon({
   }
 
   if (
-    type === "wallet"
+    type ===
+    "wallet"
   ) {
     icon =
       <Smartphone
@@ -570,6 +585,7 @@ function AccountIcon({
       style={{
         backgroundColor:
           "var(--surface-secondary)",
+
         color,
       }}
     >
@@ -585,6 +601,7 @@ function EmptyAccounts() {
       style={{
         backgroundColor:
           "var(--surface)",
+
         border:
           "1px solid var(--border)",
       }}
@@ -594,6 +611,7 @@ function EmptyAccounts() {
         style={{
           backgroundColor:
             "var(--surface-secondary)",
+
           color:
             "var(--foreground-secondary)",
         }}
@@ -625,6 +643,7 @@ function EmptyAccounts() {
         style={{
           backgroundColor:
             "var(--primary)",
+
           color:
             "var(--primary-foreground)",
         }}
@@ -667,19 +686,22 @@ function formatAccountType(
   }
 
   if (
-    type === "cash"
+    type ===
+    "cash"
   ) {
     return "Cash";
   }
 
   if (
-    type === "bank"
+    type ===
+    "bank"
   ) {
     return "Bank";
   }
 
   if (
-    type === "wallet"
+    type ===
+    "wallet"
   ) {
     return "Wallet";
   }

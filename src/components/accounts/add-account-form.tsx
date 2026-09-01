@@ -14,68 +14,112 @@ import {
   type FormEvent,
 } from "react";
 
-import { useRouter } from "next/navigation";
+import {
+  useRouter,
+} from "next/navigation";
 
-import { createClient } from "@/lib/supabase/client";
+import {
+  createClient,
+} from "@/lib/supabase/client";
 
 const accountTypes = [
   {
-    value: "cash",
-    label: "Cash",
-    description: "Physical cash you keep.",
+    value:
+      "cash",
+
+    label:
+      "Cash",
+
+    description:
+      "Physical cash you keep.",
   },
   {
-    value: "bank",
-    label: "Bank",
-    description: "A bank account.",
+    value:
+      "bank",
+
+    label:
+      "Bank",
+
+    description:
+      "A bank account.",
   },
   {
-    value: "wallet",
-    label: "Wallet",
-    description: "Digital wallet such as eSewa.",
+    value:
+      "wallet",
+
+    label:
+      "Wallet",
+
+    description:
+      "Digital wallet such as eSewa.",
   },
   {
-    value: "game_bankroll",
-    label: "Game Bankroll",
-    description: "Money reserved for game sessions.",
+    value:
+      "game_bankroll",
+
+    label:
+      "Game Bankroll",
+
+    description:
+      "Temporary money used during game sessions.",
   },
   {
-    value: "other",
-    label: "Other",
-    description: "Any other money account.",
+    value:
+      "other",
+
+    label:
+      "Other",
+
+    description:
+      "Any other money account.",
   },
 ] as const;
 
 export function AddAccountForm() {
-  const router = useRouter();
+  const router =
+    useRouter();
 
   const [
     name,
     setName,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     accountType,
     setAccountType,
-  ] = useState("cash");
+  ] =
+    useState(
+      "cash"
+    );
 
   const [
     openingBalance,
     setOpeningBalance,
-  ] = useState("0.00");
+  ] =
+    useState(
+      "0.00"
+    );
 
   const [
     error,
     setError,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     loading,
     setLoading,
-  ] = useState(false);
+  ] =
+    useState(false);
+
+  const isGameBankroll =
+    accountType ===
+    "game_bankroll";
 
   async function handleSubmit(
-    event: FormEvent<HTMLFormElement>
+    event:
+      FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
@@ -85,9 +129,13 @@ export function AddAccountForm() {
       name.trim();
 
     const cleanBalance =
-      openingBalance.trim();
+      isGameBankroll
+        ? "0.00"
+        : openingBalance.trim();
 
-    if (!cleanName) {
+    if (
+      !cleanName
+    ) {
       setError(
         "Account name is required."
       );
@@ -110,31 +158,42 @@ export function AddAccountForm() {
       return;
     }
 
-    setLoading(true);
+    setLoading(
+      true
+    );
 
     const supabase =
       createClient();
 
     const {
-      error: insertError,
-    } = await supabase
-      .from("accounts")
-      .insert({
-        name: cleanName,
+      error:
+        insertError,
+    } =
+      await supabase
+        .from(
+          "accounts"
+        )
+        .insert({
+          name:
+            cleanName,
 
-        account_type:
-          accountType,
+          account_type:
+            accountType,
 
-        opening_balance:
-          cleanBalance,
-      });
+          opening_balance:
+            cleanBalance,
+        });
 
-    if (insertError) {
+    if (
+      insertError
+    ) {
       setError(
         insertError.message
       );
 
-      setLoading(false);
+      setLoading(
+        false
+      );
 
       return;
     }
@@ -146,9 +205,28 @@ export function AddAccountForm() {
     router.refresh();
   }
 
+  function handleAccountTypeChange(
+    value: string
+  ) {
+    setAccountType(
+      value
+    );
+
+    if (
+      value ===
+      "game_bankroll"
+    ) {
+      setOpeningBalance(
+        "0.00"
+      );
+    }
+  }
+
   const selectedType =
     accountTypes.find(
-      (type) =>
+      (
+        type
+      ) =>
         type.value ===
         accountType
     ) ??
@@ -156,20 +234,22 @@ export function AddAccountForm() {
 
   return (
     <form
-      onSubmit={handleSubmit}
+      onSubmit={
+        handleSubmit
+      }
       className="mt-8"
     >
-      {/* Main form card */}
       <div
         className="overflow-hidden rounded-[var(--radius-lg)]"
         style={{
           backgroundColor:
             "var(--surface)",
+
           border:
             "1px solid var(--border)",
         }}
       >
-        {/* Account name */}
+        {/* Name */}
         <FormSection>
           <div className="flex items-start gap-3">
             <FieldIcon>
@@ -200,7 +280,9 @@ export function AddAccountForm() {
               <input
                 id="account-name"
                 type="text"
-                value={name}
+                value={
+                  name
+                }
                 onChange={(
                   event
                 ) =>
@@ -219,8 +301,10 @@ export function AddAccountForm() {
                 style={{
                   backgroundColor:
                     "var(--surface-secondary)",
+
                   border:
                     "1px solid var(--border)",
+
                   color:
                     "var(--foreground)",
                 }}
@@ -229,11 +313,15 @@ export function AddAccountForm() {
           </div>
         </FormSection>
 
-        {/* Account type */}
-        <FormSection borderTop>
+        {/* Type */}
+        <FormSection
+          borderTop
+        >
           <div className="flex items-start gap-3">
             <AccountTypeIcon
-              type={accountType}
+              type={
+                accountType
+              }
             />
 
             <div className="min-w-0 flex-1">
@@ -264,7 +352,7 @@ export function AddAccountForm() {
                 onChange={(
                   event
                 ) =>
-                  setAccountType(
+                  handleAccountTypeChange(
                     event.target
                       .value
                   )
@@ -276,14 +364,18 @@ export function AddAccountForm() {
                 style={{
                   backgroundColor:
                     "var(--surface-secondary)",
+
                   border:
                     "1px solid var(--border)",
+
                   color:
                     "var(--foreground)",
                 }}
               >
                 {accountTypes.map(
-                  (type) => (
+                  (
+                    type
+                  ) => (
                     <option
                       key={
                         type.value
@@ -303,8 +395,10 @@ export function AddAccountForm() {
           </div>
         </FormSection>
 
-        {/* Opening balance */}
-        <FormSection borderTop>
+        {/* Opening */}
+        <FormSection
+          borderTop
+        >
           <div className="flex items-start gap-3">
             <FieldIcon>
               <Banknote
@@ -327,9 +421,9 @@ export function AddAccountForm() {
                     "var(--foreground-muted)",
                 }}
               >
-                Current amount
-                already in this
-                account.
+                {isGameBankroll
+                  ? "Game Bankroll starts empty and is funded when a session begins."
+                  : "Current amount already in this account."}
               </p>
 
               <div className="relative mt-4">
@@ -348,7 +442,9 @@ export function AddAccountForm() {
                   type="text"
                   inputMode="decimal"
                   value={
-                    openingBalance
+                    isGameBankroll
+                      ? "0.00"
+                      : openingBalance
                   }
                   onChange={(
                     event
@@ -360,14 +456,17 @@ export function AddAccountForm() {
                   }
                   placeholder="0.00"
                   disabled={
-                    loading
+                    loading ||
+                    isGameBankroll
                   }
                   className="h-11 w-full rounded-[var(--radius-md)] pl-12 pr-3 text-right text-sm font-semibold tabular-nums outline-none transition disabled:cursor-not-allowed disabled:opacity-60 focus:border-[var(--primary)]"
                   style={{
                     backgroundColor:
                       "var(--surface-secondary)",
+
                     border:
                       "1px solid var(--border)",
+
                     color:
                       "var(--foreground)",
                   }}
@@ -381,26 +480,25 @@ export function AddAccountForm() {
                     "var(--foreground-muted)",
                 }}
               >
-                Opening balance
-                contributes to
-                your total wealth
-                but is not counted
-                as income.
+                {isGameBankroll
+                  ? "Session funding and settlement will move money in and out automatically."
+                  : "Opening balance contributes to your total wealth but is not counted as income."}
               </p>
             </div>
           </div>
         </FormSection>
       </div>
 
-      {/* Error */}
       {error && (
         <div
           className="mt-4 rounded-[var(--radius-md)] px-4 py-3 text-xs leading-5"
           style={{
             backgroundColor:
               "var(--negative-soft)",
+
             border:
               "1px solid var(--negative)",
+
             color:
               "var(--negative)",
           }}
@@ -409,20 +507,24 @@ export function AddAccountForm() {
         </div>
       )}
 
-      {/* Actions */}
       <div className="mt-6">
         <button
           type="submit"
-          disabled={loading}
+          disabled={
+            loading
+          }
           className="flex h-12 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
           style={{
             backgroundColor:
               "var(--primary)",
+
             color:
               "var(--primary-foreground)",
           }}
         >
-          <Plus size={16} />
+          <Plus
+            size={16}
+          />
 
           {loading
             ? "Creating account..."
@@ -431,7 +533,9 @@ export function AddAccountForm() {
 
         <button
           type="button"
-          disabled={loading}
+          disabled={
+            loading
+          }
           onClick={() =>
             router.back()
           }
@@ -454,7 +558,9 @@ function FormSection({
 }: {
   children:
     React.ReactNode;
-  borderTop?: boolean;
+
+  borderTop?:
+    boolean;
 }) {
   return (
     <div
@@ -483,6 +589,7 @@ function FieldIcon({
       style={{
         backgroundColor:
           "var(--surface-secondary)",
+
         color:
           "var(--foreground-secondary)",
       }}
@@ -505,21 +612,30 @@ function AccountTypeIcon({
   let color =
     "var(--foreground-secondary)";
 
-  if (type === "cash") {
+  if (
+    type ===
+    "cash"
+  ) {
     icon =
       <Banknote
         size={16}
       />;
   }
 
-  if (type === "bank") {
+  if (
+    type ===
+    "bank"
+  ) {
     icon =
       <Landmark
         size={16}
       />;
   }
 
-  if (type === "wallet") {
+  if (
+    type ===
+    "wallet"
+  ) {
     icon =
       <Smartphone
         size={16}
@@ -545,6 +661,7 @@ function AccountTypeIcon({
       style={{
         backgroundColor:
           "var(--surface-secondary)",
+
         color,
       }}
     >
