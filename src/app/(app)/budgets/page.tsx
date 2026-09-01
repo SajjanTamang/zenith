@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   AlertTriangle,
   Check,
+  ChevronLeft,
   ChevronRight,
   Plus,
   Target,
@@ -22,6 +23,13 @@ type Budget = {
   category: string;
   monthly_limit: string | number;
   created_at: string;
+  archived_at: string | null;
+};
+
+type BudgetHistory = {
+  budget_id: string;
+  effective_month: string;
+  monthly_limit: string | number;
 };
 
 type ExpenseTransaction = {
@@ -31,12 +39,22 @@ type ExpenseTransaction = {
   occurred_at: string;
 };
 
-export default async function BudgetsPage() {
+export default async function BudgetsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    budgetMonth?: string;
+  }>;
+}) {
+  const params =
+    await searchParams;
+
   const supabase =
     await createClient();
 
   const [
     budgetsResult,
+    historyResult,
     expensesResult,
   ] =
     await Promise.all([
@@ -46,10 +64,27 @@ export default async function BudgetsPage() {
           id,
           category,
           monthly_limit,
-          created_at
+          created_at,
+          archived_at
         `)
         .order(
           "category",
+          {
+            ascending: true,
+          }
+        ),
+
+      supabase
+        .from(
+          "budget_limit_history"
+        )
+        .select(`
+          budget_id,
+          effective_month,
+          monthly_limit
+        `)
+        .order(
+          "effective_month",
           {
             ascending: true,
           }
@@ -77,6 +112,7 @@ export default async function BudgetsPage() {
 
   const error =
     budgetsResult.error ??
+    historyResult.error ??
     expensesResult.error;
 
   if (error) {
@@ -118,6 +154,10 @@ export default async function BudgetsPage() {
     (budgetsResult.data ??
       []) as Budget[];
 
+  const history =
+    (historyResult.data ??
+      []) as BudgetHistory[];
+
   const expenses =
     (expensesResult.data ??
       []) as ExpenseTransaction[];
@@ -127,7 +167,39 @@ export default async function BudgetsPage() {
       new Date()
     );
 
-  const currentMonthExpenses =
+  const requestedMonth =
+    params.budgetMonth;
+
+  const selectedMonthKey =
+    isValidMonthKey(
+      requestedMonth
+    ) &&
+    requestedMonth <=
+      currentMonthKey
+      ? requestedMonth
+      : currentMonthKey;
+
+  const previousMonthKey =
+    shiftMonth(
+      selectedMonthKey,
+      -1
+    );
+
+  const nextMonthKey =
+    shiftMonth(
+      selectedMonthKey,
+      1
+    );
+
+  const canGoNext =
+    nextMonthKey <=
+    currentMonthKey;
+
+  const isCurrentMonth =
+    selectedMonthKey ===
+    currentMonthKey;
+
+  const selectedMonthExpenses =
     expenses.filter(
       (
         expense
@@ -137,7 +209,7 @@ export default async function BudgetsPage() {
             expense.occurred_at
           )
         ) ===
-        currentMonthKey
+        selectedMonthKey
     );
 
   const spendingByCategory =
@@ -148,7 +220,7 @@ export default async function BudgetsPage() {
 
   for (
     const expense of
-    currentMonthExpenses
+    selectedMonthExpenses
   ) {
     const category =
       normalizeCategory(
@@ -174,34 +246,170 @@ export default async function BudgetsPage() {
     );
   }
 
-  const budgetRows =
-    budgets.map(
-      (
-        budget
-      ) => {
-        const limit =
-          moneyToCents(
-            budget.monthly_limit
-          );
+  const historyByBudget =
+    new Map<
+      string,
+      BudgetHistory[]
+    >();
 
-        const spent =
-          spendingByCategory.get(
-            normalizeCategory(
-              budget.category
-            )
-          ) ??
-          BigInt(0);
+  for (
+    const entry of
+    history
+  ) {
+    const entries =
+      historyByBudget.get(
+        entry.budget_id
+      ) ??
+      [];
 
-        return {
-          ...budget,
-          limit,
-          spent,
-          remaining:
-            limit -
-            spent,
-        };
-      }
+    entries.push(
+      entry
     );
+
+    historyByBudget.set(
+      entry.budget_id,
+      entries
+    );
+  }
+
+  const budgetRows =
+    budgets
+      .map(
+        (
+          budget
+        ) => {
+          const createdMonth =
+            kathmanduMonthKey(
+              new Date(
+                budget.created_at
+              )
+            );
+
+          if (
+            createdMonth >
+            selectedMonthKey
+          ) {
+            return null;
+          }
+
+          /*
+            Current month:
+            only show budgets
+            that are still active.
+
+            Historical months:
+            an archived budget
+            remains visible in
+            months where it
+            previously existed.
+          */
+          if (
+            isCurrentMonth &&
+            budget.archived_at
+          ) {
+            return null;
+          }
+
+          if (
+            !isCurrentMonth &&
+            budget.archived_at
+          ) {
+            const archivedMonth =
+              kathmanduMonthKey(
+                new Date(
+                  budget.archived_at
+                )
+              );
+
+            if (
+              selectedMonthKey >
+              archivedMonth
+            ) {
+              return null;
+            }
+          }
+
+          const entries =
+            historyByBudget.get(
+              budget.id
+            ) ??
+            [];
+
+          const applicableHistory =
+            entries
+              .filter(
+                (
+                  entry
+                ) =>
+                  normalizeHistoryMonth(
+                    entry.effective_month
+                  ) <=
+                  selectedMonthKey
+              )
+              .sort(
+                (
+                  a,
+                  b
+                ) =>
+                  normalizeHistoryMonth(
+                    b.effective_month
+                  ).localeCompare(
+                    normalizeHistoryMonth(
+                      a.effective_month
+                    )
+                  )
+              )[0];
+
+          /*
+            No history means
+            this budget did not
+            exist yet for the
+            selected month.
+          */
+          if (
+            !applicableHistory
+          ) {
+            return null;
+          }
+
+          const limit =
+            moneyToCents(
+              applicableHistory.monthly_limit
+            );
+
+          const spent =
+            spendingByCategory.get(
+              normalizeCategory(
+                budget.category
+              )
+            ) ??
+            BigInt(0);
+
+          return {
+            ...budget,
+
+            limit,
+
+            spent,
+
+            remaining:
+              limit -
+              spent,
+          };
+        }
+      )
+      .filter(
+        (
+          budget
+        ): budget is
+          Budget & {
+            limit: bigint;
+            spent: bigint;
+            remaining: bigint;
+          } =>
+          budget !==
+          null
+      );
 
   const totalLimit =
     budgetRows.reduce(
@@ -236,20 +444,8 @@ export default async function BudgetsPage() {
     );
 
   const monthLabel =
-    new Intl.DateTimeFormat(
-      "en-US",
-      {
-        timeZone:
-          "Asia/Kathmandu",
-
-        month:
-          "long",
-
-        year:
-          "numeric",
-      }
-    ).format(
-      new Date()
+    formatMonthLabel(
+      selectedMonthKey
     );
 
   return (
@@ -272,52 +468,116 @@ export default async function BudgetsPage() {
           </h1>
         </div>
 
-        <Link
-          href="/budgets/new"
-          className="flex h-9 items-center gap-2 rounded-full px-4 text-xs font-semibold"
-          style={{
-            backgroundColor:
-              "var(--primary)",
+        {isCurrentMonth && (
+  <Link
+    href="/budgets/new"
+    className="flex h-9 items-center gap-2 rounded-full px-4 text-xs font-semibold"
+    style={{
+      backgroundColor:
+        "var(--primary)",
 
-            color:
-              "var(--primary-foreground)",
-          }}
-        >
-          <Plus
-            size={14}
-          />
+      color:
+        "var(--primary-foreground)",
+    }}
+  >
+    <Plus
+      size={14}
+    />
 
-          Add
-        </Link>
+    Add
+  </Link>
+)}
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-4">
-        <p
-          className="max-w-xs text-xs leading-5"
-          style={{
-            color:
-              "var(--foreground-muted)",
-          }}
-        >
-          Set monthly limits
-          for your everyday
-          spending categories.
-        </p>
+      <p
+        className="mt-3 max-w-xs text-xs leading-5"
+        style={{
+          color:
+            "var(--foreground-muted)",
+        }}
+      >
+        Set monthly limits
+        for your everyday
+        spending categories.
+      </p>
 
-        <p
-          className="shrink-0 text-[10px] font-medium"
+      {/* Month navigation */}
+      <div
+        className="mt-5 flex items-center justify-between rounded-[var(--radius-md)] px-2 py-2"
+        style={{
+          backgroundColor:
+            "var(--surface)",
+
+          border:
+            "1px solid var(--border)",
+        }}
+      >
+        <Link
+          href={`/budgets?budgetMonth=${previousMonthKey}`}
+          aria-label="Previous month"
+          className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] transition hover:brightness-[0.98]"
           style={{
             color:
-              "var(--foreground-muted)",
+              "var(--foreground-secondary)",
           }}
         >
-          {monthLabel}
-        </p>
+          <ChevronLeft
+            size={17}
+          />
+        </Link>
+
+        <div className="text-center">
+          <p className="text-xs font-semibold">
+            {monthLabel}
+          </p>
+
+          <p
+            className="mt-0.5 text-[9px]"
+            style={{
+              color:
+                "var(--foreground-muted)",
+            }}
+          >
+            {isCurrentMonth
+              ? "Current month"
+              : "Budget history"}
+          </p>
+        </div>
+
+        {canGoNext ? (
+          <Link
+            href={`/budgets?budgetMonth=${nextMonthKey}`}
+            aria-label="Next month"
+            className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] transition hover:brightness-[0.98]"
+            style={{
+              color:
+                "var(--foreground-secondary)",
+            }}
+          >
+            <ChevronRight
+              size={17}
+            />
+          </Link>
+        ) : (
+          <div
+            className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)]"
+            style={{
+              color:
+                "var(--foreground-muted)",
+
+              opacity: 0.35,
+            }}
+          >
+            <ChevronRight
+              size={17}
+            />
+          </div>
+        )}
       </div>
 
       {/* Summary */}
       <section
-        className="mt-8 rounded-[var(--radius-lg)] p-5"
+        className="mt-7 rounded-[var(--radius-lg)] p-5"
         style={{
           backgroundColor:
             "var(--surface)",
@@ -486,7 +746,11 @@ export default async function BudgetsPage() {
 
         {budgetRows.length ===
         0 ? (
-          <EmptyBudgets />
+          <EmptyBudgets
+            historical={
+              !isCurrentMonth
+            }
+          />
         ) : (
           <div
             className="mt-3 overflow-hidden rounded-[var(--radius-lg)]"
@@ -510,6 +774,9 @@ export default async function BudgetsPage() {
                   budget={
                     budget
                   }
+                  selectedMonthKey={
+                    selectedMonthKey
+                  }
                   borderTop={
                     index >
                     0
@@ -526,6 +793,7 @@ export default async function BudgetsPage() {
 
 function BudgetRow({
   budget,
+  selectedMonthKey,
   borderTop,
 }: {
   budget: Budget & {
@@ -533,6 +801,9 @@ function BudgetRow({
     spent: bigint;
     remaining: bigint;
   };
+
+  selectedMonthKey:
+    string;
 
   borderTop: boolean;
 }) {
@@ -559,7 +830,7 @@ function BudgetRow({
 
   return (
     <Link
-      href={`/budgets/${budget.id}`}
+      href={`/budgets/${budget.id}?budgetMonth=${selectedMonthKey}`}
       className="block px-4 py-4 transition hover:brightness-[0.98]"
       style={{
         borderTop:
@@ -709,7 +980,12 @@ function BudgetRow({
   );
 }
 
-function EmptyBudgets() {
+function EmptyBudgets({
+  historical,
+}: {
+  historical:
+    boolean;
+}) {
   return (
     <div
       className="mt-3 flex flex-col items-center rounded-[var(--radius-lg)] px-6 py-10 text-center"
@@ -737,7 +1013,9 @@ function EmptyBudgets() {
       </div>
 
       <h2 className="mt-4 text-sm font-semibold">
-        No budgets yet
+        {historical
+          ? "No budgets for this month"
+          : "No budgets yet"}
       </h2>
 
       <p
@@ -747,30 +1025,30 @@ function EmptyBudgets() {
             "var(--foreground-muted)",
         }}
       >
-        Add a monthly
-        spending limit for
-        categories you want
-        to keep under
-        control.
+        {historical
+          ? "There were no budget limits recorded for this month."
+          : "Add a monthly spending limit for categories you want to keep under control."}
       </p>
 
-      <Link
-        href="/budgets/new"
-        className="mt-5 flex h-10 items-center gap-2 rounded-[var(--radius-md)] px-4 text-sm font-semibold"
-        style={{
-          backgroundColor:
-            "var(--primary)",
+      {!historical && (
+        <Link
+          href="/budgets/new"
+          className="mt-5 flex h-10 items-center gap-2 rounded-[var(--radius-md)] px-4 text-sm font-semibold"
+          style={{
+            backgroundColor:
+              "var(--primary)",
 
-          color:
-            "var(--primary-foreground)",
-        }}
-      >
-        <Plus
-          size={15}
-        />
+            color:
+              "var(--primary-foreground)",
+          }}
+        >
+          <Plus
+            size={15}
+          />
 
-        Add Budget
-      </Link>
+          Add Budget
+        </Link>
+      )}
     </div>
   );
 }
@@ -844,4 +1122,118 @@ function kathmanduMonthKey(
     )?.value;
 
   return `${year}-${month}`;
+}
+
+function isValidMonthKey(
+  value:
+    string | undefined
+): value is string {
+  if (!value) {
+    return false;
+  }
+
+  if (
+    !/^\d{4}-\d{2}$/.test(
+      value
+    )
+  ) {
+    return false;
+  }
+
+  const month =
+    Number(
+      value.slice(
+        5,
+        7
+      )
+    );
+
+  return (
+    month >= 1 &&
+    month <= 12
+  );
+}
+
+function shiftMonth(
+  monthKey: string,
+  amount: number
+) {
+  const [
+    year,
+    month,
+  ] =
+    monthKey
+      .split("-")
+      .map(
+        Number
+      );
+
+  const date =
+    new Date(
+      Date.UTC(
+        year,
+        month -
+          1 +
+          amount,
+        1
+      )
+    );
+
+  return `${date.getUTCFullYear()}-${String(
+    date.getUTCMonth() +
+      1
+  ).padStart(
+    2,
+    "0"
+  )}`;
+}
+
+function formatMonthLabel(
+  monthKey:
+    string
+) {
+  const [
+    year,
+    month,
+  ] =
+    monthKey
+      .split("-")
+      .map(
+        Number
+      );
+
+  const date =
+    new Date(
+      Date.UTC(
+        year,
+        month - 1,
+        1
+      )
+    );
+
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      month:
+        "long",
+
+      year:
+        "numeric",
+
+      timeZone:
+        "UTC",
+    }
+  ).format(
+    date
+  );
+}
+
+function normalizeHistoryMonth(
+  value:
+    string
+) {
+  return value.slice(
+    0,
+    7
+  );
 }

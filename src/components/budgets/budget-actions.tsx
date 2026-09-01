@@ -1,9 +1,9 @@
 "use client";
 
 import {
+  Archive,
   Pencil,
   Save,
-  Trash2,
 } from "lucide-react";
 
 import {
@@ -50,8 +50,8 @@ export function BudgetActions({
   ] = useState(false);
 
   const [
-    deleting,
-    setDeleting,
+    archiving,
+    setArchiving,
   ] = useState(false);
 
   const [
@@ -144,10 +144,10 @@ export function BudgetActions({
     router.refresh();
   }
 
-  async function handleDelete() {
+  async function handleArchive() {
     const confirmed =
       window.confirm(
-        `Delete the ${category} budget? Your expense transactions will not be deleted.`
+        `Archive the ${category} budget? Your expense transactions and budget history will be preserved.`
       );
 
     if (!confirmed) {
@@ -156,30 +156,33 @@ export function BudgetActions({
 
     setError("");
     setSuccess("");
-    setDeleting(true);
+    setArchiving(true);
 
     const supabase =
       createClient();
 
     const {
-      error: deleteError,
+      error: archiveError,
     } =
       await supabase
         .from("budgets")
-        .delete()
+        .update({
+          archived_at:
+            new Date().toISOString(),
+        })
         .eq(
           "id",
           budgetId
         );
 
     if (
-      deleteError
+      archiveError
     ) {
       setError(
-        deleteError.message
+        archiveError.message
       );
 
-      setDeleting(false);
+      setArchiving(false);
 
       return;
     }
@@ -225,7 +228,7 @@ export function BudgetActions({
               setSuccess("");
             }}
             disabled={
-              deleting
+              archiving
             }
             className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:brightness-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -394,11 +397,11 @@ export function BudgetActions({
         <button
           type="button"
           onClick={
-            handleDelete
+            handleArchive
           }
           disabled={
             loading ||
-            deleting
+            archiving
           }
           className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:brightness-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
           style={{
@@ -416,7 +419,7 @@ export function BudgetActions({
                 "var(--negative)",
             }}
           >
-            <Trash2
+            <Archive
               size={15}
             />
           </div>
@@ -429,9 +432,9 @@ export function BudgetActions({
                   "var(--negative)",
               }}
             >
-              {deleting
-                ? "Deleting..."
-                : "Delete budget"}
+              {archiving
+                ? "Archiving..."
+                : "Archive budget"}
             </p>
 
             <p
@@ -441,10 +444,10 @@ export function BudgetActions({
                   "var(--foreground-muted)",
               }}
             >
-              Your existing
-              expense
-              transactions stay
-              untouched.
+              Stops the active
+              budget but keeps
+              its historical
+              records.
             </p>
           </div>
         </button>

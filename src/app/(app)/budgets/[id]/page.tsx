@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
+  History,
   Target,
 } from "lucide-react";
 
@@ -29,6 +30,13 @@ type Budget = {
   category: string;
   monthly_limit: string | number;
   created_at: string;
+  archived_at: string | null;
+};
+
+type BudgetHistory = {
+  budget_id: string;
+  effective_month: string;
+  monthly_limit: string | number;
 };
 
 type ExpenseTransaction = {
@@ -40,9 +48,14 @@ type ExpenseTransaction = {
 
 export default async function BudgetDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{
     id: string;
+  }>;
+
+  searchParams: Promise<{
+    budgetMonth?: string;
   }>;
 }) {
   const {
@@ -50,11 +63,15 @@ export default async function BudgetDetailPage({
   } =
     await params;
 
+  const query =
+    await searchParams;
+
   const supabase =
     await createClient();
 
   const [
     budgetResult,
+    historyResult,
     expensesResult,
   ] =
     await Promise.all([
@@ -64,13 +81,34 @@ export default async function BudgetDetailPage({
           id,
           category,
           monthly_limit,
-          created_at
+          created_at,
+          archived_at
         `)
         .eq(
           "id",
           id
         )
         .maybeSingle(),
+
+      supabase
+        .from(
+          "budget_limit_history"
+        )
+        .select(`
+          budget_id,
+          effective_month,
+          monthly_limit
+        `)
+        .eq(
+          "budget_id",
+          id
+        )
+        .order(
+          "effective_month",
+          {
+            ascending: true,
+          }
+        ),
 
       supabase
         .from("transactions")
@@ -87,14 +125,14 @@ export default async function BudgetDetailPage({
         .order(
           "occurred_at",
           {
-            ascending:
-              false,
+            ascending: false,
           }
         ),
     ]);
 
   if (
     budgetResult.error ||
+    historyResult.error ||
     expensesResult.error
   ) {
     return (
@@ -132,6 +170,8 @@ export default async function BudgetDetailPage({
           budget:{" "}
           {budgetResult.error
             ?.message ??
+            historyResult.error
+              ?.message ??
             expensesResult.error
               ?.message}
         </div>
@@ -148,6 +188,10 @@ export default async function BudgetDetailPage({
   const budget =
     budgetResult.data as Budget;
 
+  const history =
+    (historyResult.data ??
+      []) as BudgetHistory[];
+
   const expenses =
     (expensesResult.data ??
       []) as ExpenseTransaction[];
@@ -155,6 +199,91 @@ export default async function BudgetDetailPage({
   const currentMonthKey =
     kathmanduMonthKey(
       new Date()
+    );
+
+  const requestedMonth =
+    query.budgetMonth;
+
+  const selectedMonthKey =
+    isValidMonthKey(
+      requestedMonth
+    ) &&
+    requestedMonth <=
+      currentMonthKey
+      ? requestedMonth
+      : currentMonthKey;
+
+  const isCurrentMonth =
+    selectedMonthKey ===
+    currentMonthKey;
+
+  const createdMonth =
+    kathmanduMonthKey(
+      new Date(
+        budget.created_at
+      )
+    );
+
+  if (
+    selectedMonthKey <
+    createdMonth
+  ) {
+    notFound();
+  }
+
+  if (
+    budget.archived_at
+  ) {
+    const archivedMonth =
+      kathmanduMonthKey(
+        new Date(
+          budget.archived_at
+        )
+      );
+
+    if (
+      isCurrentMonth ||
+      selectedMonthKey >
+        archivedMonth
+    ) {
+      notFound();
+    }
+  }
+
+  const applicableHistory =
+    history
+      .filter(
+        (
+          entry
+        ) =>
+          normalizeHistoryMonth(
+            entry.effective_month
+          ) <=
+          selectedMonthKey
+      )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          normalizeHistoryMonth(
+            b.effective_month
+          ).localeCompare(
+            normalizeHistoryMonth(
+              a.effective_month
+            )
+          )
+      )[0];
+
+  if (
+    !applicableHistory
+  ) {
+    notFound();
+  }
+
+  const limit =
+    moneyToCents(
+      applicableHistory.monthly_limit
     );
 
   const matchingExpenses =
@@ -167,7 +296,7 @@ export default async function BudgetDetailPage({
             expense.occurred_at
           )
         ) ===
-          currentMonthKey &&
+          selectedMonthKey &&
         normalizeCategory(
           expense.category
         ) ===
@@ -189,11 +318,6 @@ export default async function BudgetDetailPage({
       BigInt(0)
     );
 
-  const limit =
-    moneyToCents(
-      budget.monthly_limit
-    );
-
   const remaining =
     limit -
     spent;
@@ -213,26 +337,21 @@ export default async function BudgetDetailPage({
     percent === 100;
 
   const monthLabel =
-    new Intl.DateTimeFormat(
-      "en-US",
-      {
-        timeZone:
-          "Asia/Kathmandu",
-
-        month:
-          "long",
-
-        year:
-          "numeric",
-      }
-    ).format(
-      new Date()
+    formatMonthLabel(
+      selectedMonthKey
     );
+
+  const backHref =
+    isCurrentMonth
+      ? "/budgets"
+      : `/budgets?budgetMonth=${selectedMonthKey}`;
 
   return (
     <div>
       <Link
-        href="/budgets"
+        href={
+          backHref
+        }
         className="inline-flex items-center gap-2 text-xs font-medium"
         style={{
           color:
@@ -255,7 +374,9 @@ export default async function BudgetDetailPage({
               "var(--foreground-muted)",
           }}
         >
-          Monthly budget
+          {isCurrentMonth
+            ? "Monthly budget"
+            : "Budget history"}
         </p>
 
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">
@@ -487,20 +608,77 @@ export default async function BudgetDetailPage({
         </div>
       </section>
 
-      {/* Edit / Delete */}
-      <BudgetActions
-        budgetId={
-          budget.id
-        }
-        category={
-          budget.category
-        }
-        monthlyLimit={
-          String(
-            budget.monthly_limit
-          )
-        }
-      />
+      {/* Historical notice */}
+      {!isCurrentMonth && (
+        <section className="mt-7">
+          <div
+            className="flex gap-3 rounded-[var(--radius-lg)] p-4"
+            style={{
+              backgroundColor:
+                "var(--surface)",
+
+              border:
+                "1px solid var(--border)",
+            }}
+          >
+            <div
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)]"
+              style={{
+                backgroundColor:
+                  "var(--surface-secondary)",
+
+                color:
+                  "var(--foreground-muted)",
+              }}
+            >
+              <History
+                size={16}
+              />
+            </div>
+
+            <div>
+              <p className="text-sm font-semibold">
+                Historical snapshot
+              </p>
+
+              <p
+                className="mt-1 text-[10px] leading-5"
+                style={{
+                  color:
+                    "var(--foreground-muted)",
+                }}
+              >
+                This shows the
+                spending and
+                budget limit that
+                applied during{" "}
+                {monthLabel}.
+                Historical
+                budgets cannot
+                be edited.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Current month management only */}
+      {isCurrentMonth &&
+        !budget.archived_at && (
+          <BudgetActions
+            budgetId={
+              budget.id
+            }
+            category={
+              budget.category
+            }
+            monthlyLimit={
+              String(
+                budget.monthly_limit
+              )
+            }
+          />
+        )}
     </div>
   );
 }
@@ -619,4 +797,84 @@ function kathmanduMonthKey(
     )?.value;
 
   return `${year}-${month}`;
+}
+
+function isValidMonthKey(
+  value:
+    string | undefined
+): value is string {
+  if (!value) {
+    return false;
+  }
+
+  if (
+    !/^\d{4}-\d{2}$/.test(
+      value
+    )
+  ) {
+    return false;
+  }
+
+  const month =
+    Number(
+      value.slice(
+        5,
+        7
+      )
+    );
+
+  return (
+    month >= 1 &&
+    month <= 12
+  );
+}
+
+function formatMonthLabel(
+  monthKey:
+    string
+) {
+  const [
+    year,
+    month,
+  ] =
+    monthKey
+      .split("-")
+      .map(
+        Number
+      );
+
+  const date =
+    new Date(
+      Date.UTC(
+        year,
+        month - 1,
+        1
+      )
+    );
+
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      month:
+        "long",
+
+      year:
+        "numeric",
+
+      timeZone:
+        "UTC",
+    }
+  ).format(
+    date
+  );
+}
+
+function normalizeHistoryMonth(
+  value:
+    string
+) {
+  return value.slice(
+    0,
+    7
+  );
 }
