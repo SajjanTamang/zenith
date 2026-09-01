@@ -7,6 +7,7 @@ import {
   FileDown,
   HandCoins,
   Mail,
+  Target,
   WalletCards,
 } from "lucide-react";
 
@@ -177,6 +178,18 @@ export default async function ProfilePage() {
             }
             label="Lending"
             description="Track money lent, outstanding balances, and repayments."
+          />
+
+          <ProfileLink
+            href="/budgets"
+            borderTop
+            icon={
+              <Target
+                size={16}
+              />
+            }
+            label="Budgets"
+            description="Set monthly spending limits and track category progress."
           />
 
           <ProfileValue
