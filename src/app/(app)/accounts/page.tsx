@@ -20,7 +20,10 @@ import {
   calculateAccountBalances,
   totalBalanceFromAccounts,
   totalNetWorth,
+  totalOutstandingBorrowings,
   totalOutstandingLoans,
+  type FinanceBorrowing,
+  type FinanceBorrowingRepayment,
   type FinanceGameSession,
   type FinanceLoan,
   type FinanceLoanRepayment,
@@ -50,6 +53,8 @@ export default async function AccountsPage() {
     gameSessionsResult,
     loansResult,
     repaymentsResult,
+    borrowingsResult,
+    borrowingRepaymentsResult,
   ] =
     await Promise.all([
       supabase
@@ -107,6 +112,7 @@ export default async function AccountsPage() {
           source_account_id,
           principal_amount,
           game_session_id,
+          claim_type,
           note,
           lent_at,
           due_date
@@ -124,6 +130,34 @@ export default async function AccountsPage() {
           note,
           repaid_at
         `),
+
+      supabase
+        .from(
+          "borrowings"
+        )
+        .select(`
+          id,
+          person_id,
+          to_account_id,
+          principal_amount,
+          game_session_id,
+          note,
+          borrowed_at,
+          due_date
+        `),
+
+      supabase
+        .from(
+          "borrowing_repayments"
+        )
+        .select(`
+          id,
+          borrowing_id,
+          from_account_id,
+          amount,
+          note,
+          repaid_at
+        `),
     ]);
 
   const error =
@@ -131,7 +165,9 @@ export default async function AccountsPage() {
     transactionsResult.error ??
     gameSessionsResult.error ??
     loansResult.error ??
-    repaymentsResult.error;
+    repaymentsResult.error ??
+    borrowingsResult.error ??
+    borrowingRepaymentsResult.error;
 
   if (
     error
@@ -190,6 +226,14 @@ export default async function AccountsPage() {
     (repaymentsResult.data ??
       []) as FinanceLoanRepayment[];
 
+  const borrowings =
+    (borrowingsResult.data ??
+      []) as FinanceBorrowing[];
+
+  const borrowingRepayments =
+    (borrowingRepaymentsResult.data ??
+      []) as FinanceBorrowingRepayment[];
+
   const activeAccounts =
     accounts.filter(
       (
@@ -208,22 +252,15 @@ export default async function AccountsPage() {
         null
     );
 
-  /*
-    IMPORTANT:
-
-    Balance calculations continue
-    using ALL accounts.
-
-    Archived accounts still exist
-    historically.
-  */
   const accountBalances =
     calculateAccountBalances(
       accounts,
       transactions,
       gameSessions,
       loans,
-      repayments
+      repayments,
+      borrowings,
+      borrowingRepayments
     );
 
   const availableBalance =
@@ -237,11 +274,19 @@ export default async function AccountsPage() {
       repayments
     );
 
+  const outstandingBorrowing =
+    totalOutstandingBorrowings(
+      borrowings,
+      borrowingRepayments
+    );
+
   const netWorth =
     totalNetWorth(
       accountBalances,
       loans,
-      repayments
+      repayments,
+      borrowings,
+      borrowingRepayments
     );
 
   return (
@@ -289,9 +334,9 @@ export default async function AccountsPage() {
             "var(--foreground-muted)",
         }}
       >
-        Cash, bank, wallet,
-        game bankroll, and
-        lending in one place.
+        Cash, bank, wallets,
+        bankroll, receivables,
+        and debt in one place.
       </p>
 
       {accounts.length ===
@@ -361,7 +406,7 @@ export default async function AccountsPage() {
                       "var(--foreground-muted)",
                   }}
                 >
-                  Lent out
+                  Owed to you
                 </p>
 
                 <div className="mt-1 flex items-center gap-1.5">
@@ -393,6 +438,63 @@ export default async function AccountsPage() {
                 </div>
               </Link>
             </div>
+
+            <Link
+              href="/lending"
+              className="mt-4 flex items-center justify-between gap-4 border-t pt-4"
+              style={{
+                borderColor:
+                  "var(--border)",
+              }}
+            >
+              <div>
+                <p
+                  className="text-[9px] font-medium uppercase tracking-[0.12em]"
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                >
+                  You owe
+                </p>
+
+                <p
+                  className="mt-1 text-[9px]"
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                >
+                  Outstanding
+                  borrowings
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <p
+                  className="text-sm font-semibold tabular-nums"
+                  style={{
+                    color:
+                      outstandingBorrowing >
+                      BigInt(0)
+                        ? "var(--negative)"
+                        : "var(--foreground)",
+                  }}
+                >
+                  {formatBalance(
+                    outstandingBorrowing
+                  )}
+                </p>
+
+                <ChevronRight
+                  size={14}
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                />
+              </div>
+            </Link>
           </section>
 
           <section className="mt-8">

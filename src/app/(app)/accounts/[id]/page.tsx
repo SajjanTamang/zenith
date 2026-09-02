@@ -25,6 +25,8 @@ import {
 
 import {
   calculateAccountBalances,
+  type FinanceBorrowing,
+  type FinanceBorrowingRepayment,
   type FinanceGameSession,
   type FinanceLoan,
   type FinanceLoanRepayment,
@@ -55,6 +57,10 @@ type Account = {
 type GameSessionWithId =
   FinanceGameSession & {
     id: string;
+
+    funding_account_id?:
+      | string
+      | null;
   };
 
 export default async function AccountDetailPage({
@@ -79,6 +85,8 @@ export default async function AccountDetailPage({
     gameSessionsResult,
     loansResult,
     repaymentsResult,
+    borrowingsResult,
+    borrowingRepaymentsResult,
   ] =
     await Promise.all([
       supabase
@@ -120,6 +128,7 @@ export default async function AccountDetailPage({
         .select(`
           id,
           bankroll_account_id,
+          funding_account_id,
           status,
           result_type,
           result_amount,
@@ -137,6 +146,7 @@ export default async function AccountDetailPage({
           source_account_id,
           principal_amount,
           game_session_id,
+          claim_type,
           note,
           lent_at,
           due_date
@@ -154,6 +164,34 @@ export default async function AccountDetailPage({
           note,
           repaid_at
         `),
+
+      supabase
+        .from(
+          "borrowings"
+        )
+        .select(`
+          id,
+          person_id,
+          to_account_id,
+          principal_amount,
+          game_session_id,
+          note,
+          borrowed_at,
+          due_date
+        `),
+
+      supabase
+        .from(
+          "borrowing_repayments"
+        )
+        .select(`
+          id,
+          borrowing_id,
+          from_account_id,
+          amount,
+          note,
+          repaid_at
+        `),
     ]);
 
   const error =
@@ -161,7 +199,9 @@ export default async function AccountDetailPage({
     transactionsResult.error ??
     gameSessionsResult.error ??
     loansResult.error ??
-    repaymentsResult.error;
+    repaymentsResult.error ??
+    borrowingsResult.error ??
+    borrowingRepaymentsResult.error;
 
   if (
     error
@@ -240,23 +280,23 @@ export default async function AccountDetailPage({
     (repaymentsResult.data ??
       []) as FinanceLoanRepayment[];
 
-  /*
-    IMPORTANT:
+  const borrowings =
+    (borrowingsResult.data ??
+      []) as FinanceBorrowing[];
 
-    We calculate with ALL accounts,
-    including archived accounts.
+  const borrowingRepayments =
+    (borrowingRepaymentsResult.data ??
+      []) as FinanceBorrowingRepayment[];
 
-    Archive only removes an account
-    from future account selectors.
-    It does not erase history.
-  */
   const balances =
     calculateAccountBalances(
       accounts,
       transactions,
       gameSessions,
       loans,
-      repayments
+      repayments,
+      borrowings,
+      borrowingRepayments
     );
 
   const currentBalance =
@@ -279,19 +319,25 @@ export default async function AccountDetailPage({
     null;
 
   /*
-    An active session using this
-    Game Bankroll blocks archiving.
+    An account must not be archived while
+    an active session uses it either as:
+
+    - Game Bankroll
+    - original funding account
   */
   const hasActiveGameSession =
-    isGameBankroll &&
     gameSessions.some(
       (
         session
       ) =>
-        session.bankroll_account_id ===
-          account.id &&
         session.status ===
-          "active"
+          "active" &&
+        (
+          session.bankroll_account_id ===
+            account.id ||
+          session.funding_account_id ===
+            account.id
+        )
     );
 
   return (
@@ -365,7 +411,6 @@ export default async function AccountDetailPage({
         </div>
       </div>
 
-      {/* Archived notice */}
       {isArchived && (
         <section
           className="mt-7 flex gap-3 rounded-[var(--radius-lg)] p-4"
@@ -408,14 +453,13 @@ export default async function AccountDetailPage({
               in your historical
               records but cannot
               be used for new
-              transactions until
+              money movement until
               it is restored.
             </p>
           </div>
         </section>
       )}
 
-      {/* Current balance */}
       <section
         className="mt-7 rounded-[var(--radius-lg)] p-5"
         style={{
@@ -463,11 +507,11 @@ export default async function AccountDetailPage({
           Calculated from the
           opening balance and all
           money movement connected
-          to this account.
+          to this account, including
+          borrowing and repayment.
         </p>
       </section>
 
-      {/* Details */}
       <section className="mt-7">
         <p
           className="text-[10px] font-medium uppercase tracking-[0.14em]"
@@ -548,7 +592,6 @@ export default async function AccountDetailPage({
         </div>
       </section>
 
-      {/* Game Bankroll notice */}
       {isGameBankroll && (
         <section className="mt-7">
           <div
@@ -601,7 +644,6 @@ export default async function AccountDetailPage({
         </section>
       )}
 
-      {/* Edit only while active */}
       {!isArchived && (
         <AccountEditForm
           accountId={
@@ -619,7 +661,6 @@ export default async function AccountDetailPage({
         />
       )}
 
-      {/* Archive / Restore */}
       <AccountArchiveActions
         accountId={
           account.id

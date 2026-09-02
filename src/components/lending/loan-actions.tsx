@@ -36,6 +36,11 @@ type Account = {
   archived: boolean;
 };
 
+type ClaimType =
+  | "loan"
+  | "game_winnings"
+  | "other";
+
 export function LoanActions({
   loanId,
   initialPersonName,
@@ -47,21 +52,33 @@ export function LoanActions({
   repaymentCount,
   sourceAccountArchived,
   accounts,
+  claimType = "loan",
 }: {
   loanId: string;
 
   initialPersonName: string;
+
   initialSourceAccountId: string;
+
   initialPrincipalAmount: string;
-  initialDueDate: string | null;
-  initialNote: string | null;
+
+  initialDueDate:
+    | string
+    | null;
+
+  initialNote:
+    | string
+    | null;
 
   totalRepaidCents: string;
 
   repaymentCount: number;
+
   sourceAccountArchived: boolean;
 
   accounts: Account[];
+
+  claimType?: ClaimType;
 }) {
   const router =
     useRouter();
@@ -143,6 +160,56 @@ export function LoanActions({
       totalRepaidCents
     );
 
+  const isGameWinnings =
+    claimType ===
+    "game_winnings";
+
+  const isReceivable =
+    claimType ===
+      "game_winnings" ||
+    claimType ===
+      "other";
+
+  const manageLabel =
+    isGameWinnings
+      ? "Manage game winnings"
+      : isReceivable
+        ? "Manage receivable"
+        : "Manage loan";
+
+  const editLabel =
+    isGameWinnings
+      ? "Edit winnings record"
+      : isReceivable
+        ? "Edit receivable"
+        : "Edit loan";
+
+  const deleteLabel =
+    isGameWinnings
+      ? "Delete winnings record"
+      : isReceivable
+        ? "Delete receivable"
+        : "Delete loan";
+
+  const amountLabel =
+    isGameWinnings
+      ? "Winnings amount"
+      : isReceivable
+        ? "Receivable amount"
+        : "Loan amount";
+
+  const sourceLabel =
+    isGameWinnings
+      ? "Reclassified from"
+      : isReceivable
+        ? "From account"
+        : "Lent from";
+
+  const alreadyReturnedLabel =
+    isReceivable
+      ? "Already collected"
+      : "Already repaid";
+
   const canDelete =
     repaymentCount ===
       0 &&
@@ -202,7 +269,9 @@ export function LoanActions({
       !cleanPersonName
     ) {
       setError(
-        "Enter the borrower's name."
+        isReceivable
+          ? "Enter the person's name."
+          : "Enter the borrower's name."
       );
 
       return;
@@ -214,7 +283,13 @@ export function LoanActions({
       )
     ) {
       setError(
-        "Enter a loan amount greater than 0 with no more than 2 decimal places."
+        `Enter a ${
+          isGameWinnings
+            ? "winnings"
+            : isReceivable
+              ? "receivable"
+              : "loan"
+        } amount greater than 0 with no more than 2 decimal places.`
       );
 
       return;
@@ -240,9 +315,19 @@ export function LoanActions({
       totalRepaid
     ) {
       setError(
-        `The loan cannot be lower than NPR ${formatMoneyFromCents(
+        `The ${
+          isGameWinnings
+            ? "winnings amount"
+            : isReceivable
+              ? "receivable"
+              : "loan"
+        } cannot be lower than NPR ${formatMoneyFromCents(
           totalRepaid
-        )}, because that amount has already been repaid.`
+        )}, because that amount has already been ${
+          isReceivable
+            ? "collected"
+            : "repaid"
+        }.`
       );
 
       return;
@@ -275,8 +360,10 @@ export function LoanActions({
             cleanAmount,
 
           p_due_date:
-            dueDate ||
-            null,
+            isGameWinnings
+              ? null
+              : dueDate ||
+                null,
 
           p_note:
             note.trim() ||
@@ -299,7 +386,11 @@ export function LoanActions({
     }
 
     setSuccess(
-      "Loan updated successfully."
+      isGameWinnings
+        ? "Game winnings record updated successfully."
+        : isReceivable
+          ? "Receivable updated successfully."
+          : "Loan updated successfully."
     );
 
     setLoading(
@@ -322,7 +413,11 @@ export function LoanActions({
 
     const confirmed =
       window.confirm(
-        "Delete this loan? The money will be returned to the original source account and this lending record will be permanently removed."
+        isGameWinnings
+          ? "Delete this game winnings record? The amount will be returned to the original settlement account and the receivable will be permanently removed."
+          : isReceivable
+            ? "Delete this receivable? The amount will be returned to the original source account and this receivable will be permanently removed."
+            : "Delete this loan? The money will be returned to the original source account and this lending record will be permanently removed."
       );
 
     if (
@@ -383,7 +478,7 @@ export function LoanActions({
             "var(--foreground-muted)",
         }}
       >
-        Manage loan
+        {manageLabel}
       </p>
 
       {!editing ? (
@@ -420,7 +515,7 @@ export function LoanActions({
 
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold">
-                Edit loan
+                {editLabel}
               </p>
 
               <p
@@ -430,9 +525,9 @@ export function LoanActions({
                     "var(--foreground-muted)",
                 }}
               >
-                Correct the person,
-                amount, account,
-                due date, or note.
+                {isGameWinnings
+                  ? "Correct the person, amount, or note."
+                  : "Correct the person, amount, account, due date, or note."}
               </p>
             </div>
           </button>
@@ -479,7 +574,7 @@ export function LoanActions({
               >
                 {deleting
                   ? "Deleting..."
-                  : "Delete loan"}
+                  : deleteLabel}
               </p>
 
               <p
@@ -490,7 +585,8 @@ export function LoanActions({
                 }}
               >
                 Permanently remove
-                an incorrect loan.
+                this incorrect
+                record.
               </p>
             </div>
           </button>
@@ -512,16 +608,23 @@ export function LoanActions({
                       "var(--foreground-muted)",
                   }}
                 >
-                  This loan has{" "}
+                  This record has{" "}
                   {repaymentCount}{" "}
                   {repaymentCount ===
                   1
-                    ? "repayment"
-                    : "repayments"}.
-                  Delete those
-                  repayments first
-                  before deleting the
-                  loan.
+                    ? isReceivable
+                      ? "collection"
+                      : "repayment"
+                    : isReceivable
+                      ? "collections"
+                      : "repayments"}
+                  . Delete those{" "}
+                  {isReceivable
+                    ? "collections"
+                    : "repayments"}{" "}
+                  first before
+                  deleting this
+                  record.
                 </p>
               ) : sourceAccountArchived ? (
                 <p
@@ -534,7 +637,8 @@ export function LoanActions({
                   Restore the
                   historical source
                   account before
-                  deleting this loan.
+                  deleting this
+                  record.
                 </p>
               ) : null}
             </div>
@@ -557,7 +661,6 @@ export function LoanActions({
                 "1px solid var(--border)",
             }}
           >
-            {/* Person */}
             <EditRow>
               <ActionIcon>
                 <UserRound
@@ -599,7 +702,6 @@ export function LoanActions({
               </div>
             </EditRow>
 
-            {/* Amount */}
             <EditRow
               borderTop
             >
@@ -619,7 +721,7 @@ export function LoanActions({
                         "var(--foreground-muted)",
                     }}
                   >
-                    Loan amount
+                    {amountLabel}
                   </label>
 
                   {sourceAccountArchived && (
@@ -678,9 +780,8 @@ export function LoanActions({
                         "var(--foreground-muted)",
                     }}
                   >
-                    Already repaid:
-                    {" "}
-                    NPR{" "}
+                    {alreadyReturnedLabel}
+                    : NPR{" "}
                     {formatMoneyFromCents(
                       totalRepaid
                     )}
@@ -689,7 +790,6 @@ export function LoanActions({
               </div>
             </EditRow>
 
-            {/* Source */}
             <EditRow
               borderTop
             >
@@ -709,7 +809,7 @@ export function LoanActions({
                         "var(--foreground-muted)",
                     }}
                   >
-                    Lent from
+                    {sourceLabel}
                   </label>
 
                   {sourceAccountArchived && (
@@ -741,7 +841,8 @@ export function LoanActions({
                     }
                     disabled={
                       loading ||
-                      sourceAccountArchived
+                      sourceAccountArchived ||
+                      isGameWinnings
                     }
                     className="h-8 w-full appearance-none bg-transparent pr-8 text-sm font-semibold outline-none disabled:opacity-60"
                   >
@@ -775,62 +876,77 @@ export function LoanActions({
                     }}
                   />
                 </div>
-              </div>
-            </EditRow>
 
-            {/* Due date */}
-            <EditRow
-              borderTop
-            >
-              <ActionIcon>
-                <CalendarDays
-                  size={15}
-                />
-              </ActionIcon>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-3">
-                  <label
-                    htmlFor="edit-loan-due-date"
-                    className="text-sm font-semibold"
-                  >
-                    Due date
-                  </label>
-
-                  <span
-                    className="text-[9px]"
+                {isGameWinnings && (
+                  <p
+                    className="mt-2 text-[9px] leading-4"
                     style={{
                       color:
                         "var(--foreground-muted)",
                     }}
                   >
-                    Optional
-                  </span>
-                </div>
-
-                <input
-                  id="edit-loan-due-date"
-                  type="date"
-                  value={
-                    dueDate
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setDueDate(
-                      event.target
-                        .value
-                    )
-                  }
-                  disabled={
-                    loading
-                  }
-                  className="mt-2 h-9 w-full bg-transparent text-sm outline-none disabled:opacity-60"
-                />
+                    Game winnings stay
+                    connected to the
+                    original Game Session
+                    settlement account.
+                  </p>
+                )}
               </div>
             </EditRow>
 
-            {/* Note */}
+            {!isGameWinnings && (
+              <EditRow
+                borderTop
+              >
+                <ActionIcon>
+                  <CalendarDays
+                    size={15}
+                  />
+                </ActionIcon>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <label
+                      htmlFor="edit-loan-due-date"
+                      className="text-sm font-semibold"
+                    >
+                      Due date
+                    </label>
+
+                    <span
+                      className="text-[9px]"
+                      style={{
+                        color:
+                          "var(--foreground-muted)",
+                      }}
+                    >
+                      Optional
+                    </span>
+                  </div>
+
+                  <input
+                    id="edit-loan-due-date"
+                    type="date"
+                    value={
+                      dueDate
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setDueDate(
+                        event.target
+                          .value
+                      )
+                    }
+                    disabled={
+                      loading
+                    }
+                    className="mt-2 h-9 w-full bg-transparent text-sm outline-none disabled:opacity-60"
+                  />
+                </div>
+              </EditRow>
+            )}
+
             <EditRow
               borderTop
             >
@@ -899,10 +1015,10 @@ export function LoanActions({
             >
               The source account is
               archived. You can still
-              correct the person, due
-              date, and note, but restore
-              the account before changing
-              the loan amount or source.
+              correct the person and
+              note, but restore the
+              account before changing
+              financial details.
             </div>
           )}
 
@@ -1059,7 +1175,7 @@ function MessageBox({
   message:
     string;
 }) {
-  const success =
+  const isSuccess =
     type ===
     "success";
 
@@ -1068,17 +1184,17 @@ function MessageBox({
       className="mt-4 rounded-[var(--radius-md)] px-4 py-3 text-xs leading-5"
       style={{
         backgroundColor:
-          success
+          isSuccess
             ? "var(--positive-soft)"
             : "var(--negative-soft)",
 
         border:
-          success
+          isSuccess
             ? "1px solid var(--positive)"
             : "1px solid var(--negative)",
 
         color:
-          success
+          isSuccess
             ? "var(--positive)"
             : "var(--negative)",
       }}

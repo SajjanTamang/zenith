@@ -7,14 +7,21 @@ import {
   Clock3,
   HandCoins,
   UserRound,
+  WalletCards,
 } from "lucide-react";
 
 import {
+  borrowingOutstandingBalance,
+  isBorrowingOverdue,
+  isBorrowingPartiallyPaid,
   isLoanFullyPaid,
   isLoanOverdue,
   isLoanPartiallyPaid,
   loanOutstandingBalance,
+  totalOutstandingBorrowings,
   totalOutstandingLoans,
+  type FinanceBorrowing,
+  type FinanceBorrowingRepayment,
   type FinanceLoan,
   type FinanceLoanRepayment,
 } from "@/lib/finance";
@@ -38,9 +45,15 @@ type Account = {
   name: string;
 };
 
-type Loan = FinanceLoan & {
-  lent_at: string;
-};
+type Loan =
+  FinanceLoan & {
+    lent_at: string;
+  };
+
+type Borrowing =
+  FinanceBorrowing & {
+    borrowed_at: string;
+  };
 
 export default async function LendingPage() {
   const supabase =
@@ -49,8 +62,10 @@ export default async function LendingPage() {
   const [
     peopleResult,
     loansResult,
-    repaymentsResult,
+    loanRepaymentsResult,
     accountsResult,
+    borrowingsResult,
+    borrowingRepaymentsResult,
   ] =
     await Promise.all([
       supabase
@@ -63,13 +78,16 @@ export default async function LendingPage() {
         `),
 
       supabase
-        .from("loans")
+        .from(
+          "loans"
+        )
         .select(`
           id,
           person_id,
           source_account_id,
           principal_amount,
           game_session_id,
+          claim_type,
           note,
           lent_at,
           due_date
@@ -103,20 +121,68 @@ export default async function LendingPage() {
         ),
 
       supabase
-        .from("accounts")
+        .from(
+          "accounts"
+        )
         .select(`
           id,
           name
         `),
+
+      supabase
+        .from(
+          "borrowings"
+        )
+        .select(`
+          id,
+          person_id,
+          to_account_id,
+          principal_amount,
+          game_session_id,
+          note,
+          borrowed_at,
+          due_date
+        `)
+        .order(
+          "borrowed_at",
+          {
+            ascending:
+              false,
+          }
+        ),
+
+      supabase
+        .from(
+          "borrowing_repayments"
+        )
+        .select(`
+          id,
+          borrowing_id,
+          from_account_id,
+          amount,
+          note,
+          repaid_at
+        `)
+        .order(
+          "repaid_at",
+          {
+            ascending:
+              false,
+          }
+        ),
     ]);
 
   const error =
     peopleResult.error ??
     loansResult.error ??
-    repaymentsResult.error ??
-    accountsResult.error;
+    loanRepaymentsResult.error ??
+    accountsResult.error ??
+    borrowingsResult.error ??
+    borrowingRepaymentsResult.error;
 
-  if (error) {
+  if (
+    error
+  ) {
     return (
       <div>
         <p
@@ -130,7 +196,7 @@ export default async function LendingPage() {
         </p>
 
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          Lending
+          Money
         </h1>
 
         <div
@@ -143,8 +209,8 @@ export default async function LendingPage() {
               "var(--negative)",
           }}
         >
-          Could not load
-          lending data:{" "}
+          Could not load money
+          data:{" "}
           {error.message}
         </div>
       </div>
@@ -159,13 +225,21 @@ export default async function LendingPage() {
     (loansResult.data ??
       []) as Loan[];
 
-  const repayments =
-    (repaymentsResult.data ??
+  const loanRepayments =
+    (loanRepaymentsResult.data ??
       []) as FinanceLoanRepayment[];
 
   const accounts =
     (accountsResult.data ??
       []) as Account[];
+
+  const borrowings =
+    (borrowingsResult.data ??
+      []) as Borrowing[];
+
+  const borrowingRepayments =
+    (borrowingRepaymentsResult.data ??
+      []) as FinanceBorrowingRepayment[];
 
   const peopleById =
     new Map(
@@ -191,6 +265,9 @@ export default async function LendingPage() {
       )
     );
 
+  /*
+    MONEY OWED TO USER
+  */
   const outstandingLoans =
     loans.filter(
       (
@@ -198,7 +275,7 @@ export default async function LendingPage() {
       ) =>
         !isLoanFullyPaid(
           loan,
-          repayments
+          loanRepayments
         )
     );
 
@@ -209,14 +286,47 @@ export default async function LendingPage() {
       ) =>
         isLoanFullyPaid(
           loan,
-          repayments
+          loanRepayments
         )
     );
 
-  const totalOutstanding =
+  /*
+    MONEY USER OWES
+  */
+  const outstandingBorrowings =
+    borrowings.filter(
+      (
+        borrowing
+      ) =>
+        borrowingOutstandingBalance(
+          borrowing,
+          borrowingRepayments
+        ) >
+        BigInt(0)
+    );
+
+  const paidBorrowings =
+    borrowings.filter(
+      (
+        borrowing
+      ) =>
+        borrowingOutstandingBalance(
+          borrowing,
+          borrowingRepayments
+        ) ===
+        BigInt(0)
+    );
+
+  const totalOwedToYou =
     totalOutstandingLoans(
       loans,
-      repayments
+      loanRepayments
+    );
+
+  const totalYouOwe =
+    totalOutstandingBorrowings(
+      borrowings,
+      borrowingRepayments
     );
 
   const outstandingPeople =
@@ -229,10 +339,20 @@ export default async function LendingPage() {
       )
     ).size;
 
+  const debtPeople =
+    new Set(
+      outstandingBorrowings.map(
+        (
+          borrowing
+        ) =>
+          borrowing.person_id
+      )
+    ).size;
+
   return (
     <div>
       {/* Header */}
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex items-end justify-between gap-3">
         <div>
           <p
             className="text-[10px] font-medium uppercase tracking-[0.14em]"
@@ -245,27 +365,50 @@ export default async function LendingPage() {
           </p>
 
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            Lending
+            Money
           </h1>
         </div>
 
-        <Link
-          href="/quick-add?type=lend"
-          className="flex h-9 items-center gap-2 rounded-full px-4 text-xs font-semibold"
-          style={{
-            backgroundColor:
-              "var(--primary)",
+        <div className="flex items-center gap-2">
+          <Link
+            href="/quick-add?type=lend"
+            className="flex h-9 items-center gap-2 rounded-full px-3 text-xs font-semibold"
+            style={{
+              backgroundColor:
+                "var(--surface)",
 
-            color:
-              "var(--primary-foreground)",
-          }}
-        >
-          <HandCoins
-            size={14}
-          />
+              border:
+                "1px solid var(--border)",
 
-          Lend
-        </Link>
+              color:
+                "var(--foreground)",
+            }}
+          >
+            <HandCoins
+              size={14}
+            />
+
+            Lend
+          </Link>
+
+          <Link
+            href="/lending/borrow"
+            className="flex h-9 items-center gap-2 rounded-full px-3 text-xs font-semibold"
+            style={{
+              backgroundColor:
+                "var(--primary)",
+
+              color:
+                "var(--primary-foreground)",
+            }}
+          >
+            <WalletCards
+              size={14}
+            />
+
+            Borrow
+          </Link>
+        </div>
       </div>
 
       <p
@@ -275,123 +418,130 @@ export default async function LendingPage() {
             "var(--foreground-muted)",
         }}
       >
-        Keep track of money
-        you have lent and what
-        still needs to come
-        back.
+        Track money people
+        owe you and money you
+        need to pay back.
       </p>
 
       {/* Summary */}
-      <section
-        className="mt-8 rounded-[var(--radius-lg)] p-5"
-        style={{
-          backgroundColor:
-            "var(--surface)",
+      <section className="mt-8 grid grid-cols-2 gap-3">
+        <div
+          className="rounded-[var(--radius-lg)] p-4"
+          style={{
+            backgroundColor:
+              "var(--surface)",
 
-          border:
-            "1px solid var(--border)",
-        }}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p
-              className="text-[10px] font-medium uppercase tracking-[0.14em]"
-              style={{
-                color:
-                  "var(--foreground-muted)",
-              }}
-            >
-              Money owed to you
-            </p>
-
-            <p
-              className="mt-2 text-3xl font-semibold tracking-[-0.03em] tabular-nums"
-              style={{
-                color:
-                  totalOutstanding >
-                  BigInt(0)
-                    ? "var(--primary)"
-                    : "var(--foreground)",
-              }}
-            >
-              NPR{" "}
-              {formatMoneyFromCents(
-                totalOutstanding
-              )}
-            </p>
-
-            <p
-              className="mt-2 text-[10px]"
-              style={{
-                color:
-                  "var(--foreground-muted)",
-              }}
-            >
-              {
-                outstandingLoans.length
-              }{" "}
-              {outstandingLoans.length ===
-              1
-                ? "outstanding loan"
-                : "outstanding loans"}
-              {" • "}
-              {
-                outstandingPeople
-              }{" "}
-              {outstandingPeople ===
-              1
-                ? "person"
-                : "people"}
-            </p>
-          </div>
-
-          <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-sm)]"
-            style={{
-              backgroundColor:
-                "var(--surface-secondary)",
-
-              color:
-                "var(--primary)",
-            }}
-          >
-            <HandCoins
-              size={18}
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* Outstanding */}
-      <section className="mt-8">
-        <div className="flex items-center justify-between gap-4">
-          <h2
-            className="text-[10px] font-medium uppercase tracking-[0.14em]"
+            border:
+              "1px solid var(--border)",
+          }}
+        >
+          <p
+            className="text-[9px] font-medium uppercase tracking-[0.12em]"
             style={{
               color:
                 "var(--foreground-muted)",
             }}
           >
-            Outstanding
-          </h2>
+            Owed to you
+          </p>
 
-          <span
-            className="text-[10px]"
+          <p
+            className="mt-3 text-xl font-semibold tracking-tight tabular-nums"
+            style={{
+              color:
+                totalOwedToYou >
+                BigInt(0)
+                  ? "var(--primary)"
+                  : "var(--foreground)",
+            }}
+          >
+            NPR{" "}
+            {formatMoneyFromCents(
+              totalOwedToYou
+            )}
+          </p>
+
+          <p
+            className="mt-2 text-[9px]"
             style={{
               color:
                 "var(--foreground-muted)",
             }}
           >
             {
-              outstandingLoans.length
+              outstandingPeople
             }{" "}
-            open
-          </span>
+            {outstandingPeople ===
+            1
+              ? "person"
+              : "people"}
+          </p>
         </div>
+
+        <div
+          className="rounded-[var(--radius-lg)] p-4"
+          style={{
+            backgroundColor:
+              "var(--surface)",
+
+            border:
+              "1px solid var(--border)",
+          }}
+        >
+          <p
+            className="text-[9px] font-medium uppercase tracking-[0.12em]"
+            style={{
+              color:
+                "var(--foreground-muted)",
+            }}
+          >
+            You owe
+          </p>
+
+          <p
+            className="mt-3 text-xl font-semibold tracking-tight tabular-nums"
+            style={{
+              color:
+                totalYouOwe >
+                BigInt(0)
+                  ? "var(--negative)"
+                  : "var(--foreground)",
+            }}
+          >
+            NPR{" "}
+            {formatMoneyFromCents(
+              totalYouOwe
+            )}
+          </p>
+
+          <p
+            className="mt-2 text-[9px]"
+            style={{
+              color:
+                "var(--foreground-muted)",
+            }}
+          >
+            {
+              debtPeople
+            }{" "}
+            {debtPeople ===
+            1
+              ? "person"
+              : "people"}
+          </p>
+        </div>
+      </section>
+
+      {/* Owed to you */}
+      <section className="mt-8">
+        <SectionHeader
+          title="Owed to you"
+          count={`${outstandingLoans.length} open`}
+        />
 
         {outstandingLoans.length ===
         0 ? (
-          <EmptyOutstanding />
+          <EmptyOwedToYou />
         ) : (
           <div
             className="mt-3 overflow-hidden rounded-[var(--radius-lg)]"
@@ -416,7 +566,7 @@ export default async function LendingPage() {
                     loan
                   }
                   repayments={
-                    repayments
+                    loanRepayments
                   }
                   personName={
                     peopleById.get(
@@ -441,37 +591,19 @@ export default async function LendingPage() {
         )}
       </section>
 
-      {/* Paid */}
+      {/* I owe */}
       <section className="mt-8">
-        <div className="flex items-center justify-between gap-4">
-          <h2
-            className="text-[10px] font-medium uppercase tracking-[0.14em]"
-            style={{
-              color:
-                "var(--foreground-muted)",
-            }}
-          >
-            Paid
-          </h2>
+        <SectionHeader
+          title="I owe"
+          count={`${outstandingBorrowings.length} open`}
+        />
 
-          <span
-            className="text-[10px]"
-            style={{
-              color:
-                "var(--foreground-muted)",
-            }}
-          >
-            {
-              paidLoans.length
-            }{" "}
-            completed
-          </span>
-        </div>
-
-        {paidLoans.length ===
+        {outstandingBorrowings.length ===
         0 ? (
+          <EmptyBorrowing />
+        ) : (
           <div
-            className="mt-3 rounded-[var(--radius-lg)] px-5 py-6"
+            className="mt-3 overflow-hidden rounded-[var(--radius-lg)]"
             style={{
               backgroundColor:
                 "var(--surface)",
@@ -480,42 +612,57 @@ export default async function LendingPage() {
                 "1px solid var(--border)",
             }}
           >
-            <div className="flex items-center gap-3">
-              <div
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-                style={{
-                  backgroundColor:
-                    "var(--surface-secondary)",
-
-                  color:
-                    "var(--foreground-muted)",
-                }}
-              >
-                <Check
-                  size={16}
+            {outstandingBorrowings.map(
+              (
+                borrowing,
+                index
+              ) => (
+                <BorrowingRow
+                  key={
+                    borrowing.id
+                  }
+                  borrowing={
+                    borrowing
+                  }
+                  repayments={
+                    borrowingRepayments
+                  }
+                  personName={
+                    peopleById.get(
+                      borrowing.person_id
+                    ) ??
+                    "Unknown person"
+                  }
+                  accountName={
+                    accountsById.get(
+                      borrowing.to_account_id
+                    ) ??
+                    "Unknown account"
+                  }
+                  borderTop={
+                    index >
+                    0
+                  }
                 />
-              </div>
-
-              <div>
-                <p className="text-sm font-semibold">
-                  No completed
-                  loans yet
-                </p>
-
-                <p
-                  className="mt-1 text-[10px]"
-                  style={{
-                    color:
-                      "var(--foreground-muted)",
-                  }}
-                >
-                  Fully repaid
-                  lending will
-                  appear here.
-                </p>
-              </div>
-            </div>
+              )
+            )}
           </div>
+        )}
+      </section>
+
+      {/* Returned to you */}
+      <section className="mt-8">
+        <SectionHeader
+          title="Returned to you"
+          count={`${paidLoans.length} completed`}
+        />
+
+        {paidLoans.length ===
+        0 ? (
+          <EmptyHistory
+            title="Nothing returned yet"
+            description="Fully collected loans and receivables will appear here."
+          />
         ) : (
           <div
             className="mt-3 overflow-hidden rounded-[var(--radius-lg)]"
@@ -555,9 +702,66 @@ export default async function LendingPage() {
           </div>
         )}
       </section>
+
+      {/* Repaid by you */}
+      <section className="mt-8">
+        <SectionHeader
+          title="Repaid by you"
+          count={`${paidBorrowings.length} completed`}
+        />
+
+        {paidBorrowings.length ===
+        0 ? (
+          <EmptyHistory
+            title="No repaid debts yet"
+            description="Borrowings you fully repay will remain here for history."
+          />
+        ) : (
+          <div
+            className="mt-3 overflow-hidden rounded-[var(--radius-lg)]"
+            style={{
+              backgroundColor:
+                "var(--surface)",
+
+              border:
+                "1px solid var(--border)",
+            }}
+          >
+            {paidBorrowings.map(
+              (
+                borrowing,
+                index
+              ) => (
+                <PaidBorrowingRow
+                  key={
+                    borrowing.id
+                  }
+                  borrowing={
+                    borrowing
+                  }
+                  personName={
+                    peopleById.get(
+                      borrowing.person_id
+                    ) ??
+                    "Unknown person"
+                  }
+                  borderTop={
+                    index >
+                    0
+                  }
+                />
+              )
+            )}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
+
+/* =========================================================
+   ACTIVE MONEY OWED TO USER
+   ========================================================= */
 
 function LoanRow({
   loan,
@@ -571,14 +775,11 @@ function LoanRow({
   repayments:
     FinanceLoanRepayment[];
 
-  personName:
-    string;
+  personName: string;
 
-  accountName:
-    string;
+  accountName: string;
 
-  borderTop:
-    boolean;
+  borderTop: boolean;
 }) {
   const principal =
     moneyToCents(
@@ -614,19 +815,14 @@ function LoanRow({
         ? "PARTIAL"
         : "UNPAID";
 
-  const statusColor =
-    overdue
-      ? "var(--negative)"
-      : partiallyPaid
-        ? "var(--primary)"
-        : "var(--foreground-muted)";
-
-  const statusBackground =
-    overdue
-      ? "var(--negative-soft)"
-      : partiallyPaid
-        ? "rgba(0, 102, 255, 0.10)"
-        : "var(--surface-secondary)";
+  const claimLabel =
+    loan.claim_type ===
+    "game_winnings"
+      ? "Game winnings"
+      : loan.claim_type ===
+          "other"
+        ? "Receivable"
+        : "Loan";
 
   return (
     <Link
@@ -677,10 +873,7 @@ function LoanRow({
                     "var(--foreground-muted)",
                 }}
               >
-                Lent{" "}
-                {formatKathmanduDate(
-                  loan.lent_at
-                )}
+                {claimLabel}
                 {" • "}
                 {accountName}
               </p>
@@ -724,10 +917,18 @@ function LoanRow({
                 className="rounded-full px-2 py-1 text-[8px] font-semibold tracking-[0.08em]"
                 style={{
                   backgroundColor:
-                    statusBackground,
+                    overdue
+                      ? "var(--negative-soft)"
+                      : partiallyPaid
+                        ? "rgba(0, 102, 255, 0.10)"
+                        : "var(--surface-secondary)",
 
                   color:
-                    statusColor,
+                    overdue
+                      ? "var(--negative)"
+                      : partiallyPaid
+                        ? "var(--primary)"
+                        : "var(--foreground-muted)",
                 }}
               >
                 {status}
@@ -774,6 +975,7 @@ function LoanRow({
 
             <ChevronRight
               size={15}
+              className="shrink-0"
               style={{
                 color:
                   "var(--foreground-muted)",
@@ -786,6 +988,218 @@ function LoanRow({
   );
 }
 
+/* =========================================================
+   ACTIVE MONEY USER OWES
+   ========================================================= */
+
+function BorrowingRow({
+  borrowing,
+  repayments,
+  personName,
+  accountName,
+  borderTop,
+}: {
+  borrowing: Borrowing;
+
+  repayments:
+    FinanceBorrowingRepayment[];
+
+  personName: string;
+
+  accountName: string;
+
+  borderTop: boolean;
+}) {
+  const principal =
+    moneyToCents(
+      borrowing.principal_amount
+    );
+
+  const outstanding =
+    borrowingOutstandingBalance(
+      borrowing,
+      repayments
+    );
+
+  const repaid =
+    principal -
+    outstanding;
+
+  const partiallyPaid =
+    isBorrowingPartiallyPaid(
+      borrowing,
+      repayments
+    );
+
+  const overdue =
+    isBorrowingOverdue(
+      borrowing,
+      repayments
+    );
+
+  const status =
+    overdue
+      ? "OVERDUE"
+      : partiallyPaid
+        ? "PARTIAL"
+        : "UNPAID";
+
+  return (
+    <Link
+      href={`/lending/borrowings/${borrowing.id}`}
+      className="block px-4 py-4 transition hover:brightness-[0.98]"
+      style={{
+        borderTop:
+          borderTop
+            ? "1px solid var(--border)"
+            : undefined,
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)]"
+          style={{
+            backgroundColor:
+              overdue
+                ? "var(--negative-soft)"
+                : "var(--surface-secondary)",
+
+            color:
+              "var(--negative)",
+          }}
+        >
+          {overdue ? (
+            <AlertTriangle
+              size={16}
+            />
+          ) : (
+            <WalletCards
+              size={16}
+            />
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">
+                {personName}
+              </p>
+
+              <p
+                className="mt-1 text-[10px]"
+                style={{
+                  color:
+                    "var(--foreground-muted)",
+                }}
+              >
+                Borrowed{" "}
+                {formatKathmanduDate(
+                  borrowing.borrowed_at
+                )}
+                {" • "}
+                {accountName}
+              </p>
+            </div>
+
+            <div className="shrink-0 text-right">
+              <p
+                className="text-sm font-semibold tabular-nums"
+                style={{
+                  color:
+                    "var(--negative)",
+                }}
+              >
+                NPR{" "}
+                {formatMoneyFromCents(
+                  outstanding
+                )}
+              </p>
+
+              <p
+                className="mt-1 text-[9px]"
+                style={{
+                  color:
+                    "var(--foreground-muted)",
+                }}
+              >
+                you owe
+              </p>
+            </div>
+          </div>
+
+          {borrowing.note && (
+            <p
+              className="mt-3 truncate text-[10px]"
+              style={{
+                color:
+                  "var(--foreground-secondary)",
+              }}
+            >
+              {borrowing.note}
+            </p>
+          )}
+
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className="rounded-full px-2 py-1 text-[8px] font-semibold tracking-[0.08em]"
+                style={{
+                  backgroundColor:
+                    overdue
+                      ? "var(--negative-soft)"
+                      : partiallyPaid
+                        ? "rgba(0, 102, 255, 0.10)"
+                        : "var(--surface-secondary)",
+
+                  color:
+                    overdue
+                      ? "var(--negative)"
+                      : partiallyPaid
+                        ? "var(--primary)"
+                        : "var(--foreground-muted)",
+                }}
+              >
+                {status}
+              </span>
+
+              {repaid >
+                BigInt(0) && (
+                <span
+                  className="text-[9px] tabular-nums"
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                >
+                  NPR{" "}
+                  {formatMoneyFromCents(
+                    repaid
+                  )}{" "}
+                  repaid
+                </span>
+              )}
+            </div>
+
+            <ChevronRight
+              size={15}
+              className="shrink-0"
+              style={{
+                color:
+                  "var(--foreground-muted)",
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+/* =========================================================
+   COMPLETED RECEIVABLE
+   ========================================================= */
+
 function PaidLoanRow({
   loan,
   personName,
@@ -793,16 +1207,23 @@ function PaidLoanRow({
 }: {
   loan: Loan;
 
-  personName:
-    string;
+  personName: string;
 
-  borderTop:
-    boolean;
+  borderTop: boolean;
 }) {
   const principal =
     moneyToCents(
       loan.principal_amount
     );
+
+  const claimLabel =
+    loan.claim_type ===
+    "game_winnings"
+      ? "Game winnings collected"
+      : loan.claim_type ===
+          "other"
+        ? "Receivable collected"
+        : "Loan fully returned";
 
   return (
     <Link
@@ -842,7 +1263,7 @@ function PaidLoanRow({
               "var(--foreground-muted)",
           }}
         >
-          Fully repaid
+          {claimLabel}
         </p>
       </div>
 
@@ -867,6 +1288,7 @@ function PaidLoanRow({
 
       <ChevronRight
         size={15}
+        className="shrink-0"
         style={{
           color:
             "var(--foreground-muted)",
@@ -876,10 +1298,139 @@ function PaidLoanRow({
   );
 }
 
-function EmptyOutstanding() {
+/* =========================================================
+   COMPLETED BORROWING
+   ========================================================= */
+
+function PaidBorrowingRow({
+  borrowing,
+  personName,
+  borderTop,
+}: {
+  borrowing: Borrowing;
+
+  personName: string;
+
+  borderTop: boolean;
+}) {
+  const principal =
+    moneyToCents(
+      borrowing.principal_amount
+    );
+
+  return (
+    <Link
+      href={`/lending/borrowings/${borrowing.id}`}
+      className="flex items-center gap-3 px-4 py-4 transition hover:brightness-[0.98]"
+      style={{
+        borderTop:
+          borderTop
+            ? "1px solid var(--border)"
+            : undefined,
+      }}
+    >
+      <div
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+        style={{
+          backgroundColor:
+            "var(--positive-soft)",
+
+          color:
+            "var(--positive)",
+        }}
+      >
+        <Check
+          size={15}
+        />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold">
+          {personName}
+        </p>
+
+        <p
+          className="mt-1 text-[10px]"
+          style={{
+            color:
+              "var(--foreground-muted)",
+          }}
+        >
+          Borrowing fully repaid
+        </p>
+      </div>
+
+      <div className="shrink-0 text-right">
+        <p className="text-xs font-semibold tabular-nums">
+          NPR{" "}
+          {formatMoneyFromCents(
+            principal
+          )}
+        </p>
+
+        <p
+          className="mt-1 text-[9px]"
+          style={{
+            color:
+              "var(--positive)",
+          }}
+        >
+          PAID
+        </p>
+      </div>
+
+      <ChevronRight
+        size={15}
+        className="shrink-0"
+        style={{
+          color:
+            "var(--foreground-muted)",
+        }}
+      />
+    </Link>
+  );
+}
+
+/* =========================================================
+   SHARED UI
+   ========================================================= */
+
+function SectionHeader({
+  title,
+  count,
+}: {
+  title: string;
+  count: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <h2
+        className="text-[10px] font-medium uppercase tracking-[0.14em]"
+        style={{
+          color:
+            "var(--foreground-muted)",
+        }}
+      >
+        {title}
+      </h2>
+
+      <span
+        className="text-[10px]"
+        style={{
+          color:
+            "var(--foreground-muted)",
+        }}
+      >
+        {count}
+      </span>
+    </div>
+  );
+}
+
+function EmptyOwedToYou() {
   return (
     <div
-      className="mt-3 flex flex-col items-center rounded-[var(--radius-lg)] px-6 py-10 text-center"
+      className="mt-3 rounded-[var(--radius-lg)] px-5 py-6"
       style={{
         backgroundColor:
           "var(--surface)",
@@ -888,63 +1439,129 @@ function EmptyOutstanding() {
           "1px solid var(--border)",
       }}
     >
-      <div
-        className="flex h-11 w-11 items-center justify-center rounded-full"
-        style={{
-          backgroundColor:
-            "var(--surface-secondary)",
-
-          color:
-            "var(--foreground-secondary)",
-        }}
-      >
-        <HandCoins
-          size={19}
-        />
-      </div>
-
-      <h2 className="mt-4 text-sm font-semibold">
-        Nobody owes you
-        money
-      </h2>
+      <p className="text-sm font-semibold">
+        Nobody owes you money
+      </p>
 
       <p
-        className="mt-2 max-w-xs text-xs leading-5"
+        className="mt-1 text-[10px] leading-4"
         style={{
           color:
             "var(--foreground-muted)",
         }}
       >
-        Outstanding loans
-        will appear here
-        whenever you lend
-        money.
+        Loans and receivables
+        will appear here.
+      </p>
+    </div>
+  );
+}
+
+function EmptyBorrowing() {
+  return (
+    <div
+      className="mt-3 rounded-[var(--radius-lg)] px-5 py-6"
+      style={{
+        backgroundColor:
+          "var(--surface)",
+
+        border:
+          "1px solid var(--border)",
+      }}
+    >
+      <p className="text-sm font-semibold">
+        You do not owe anyone
+      </p>
+
+      <p
+        className="mt-1 text-[10px] leading-4"
+        style={{
+          color:
+            "var(--foreground-muted)",
+        }}
+      >
+        Borrowed money will
+        appear here until it is
+        fully repaid.
       </p>
 
       <Link
-        href="/quick-add?type=lend"
-        className="mt-5 flex h-10 items-center gap-2 rounded-[var(--radius-md)] px-4 text-sm font-semibold"
+        href="/lending/borrow"
+        className="mt-4 inline-flex h-9 items-center gap-2 rounded-[var(--radius-md)] px-3 text-xs font-semibold"
         style={{
           backgroundColor:
-            "var(--primary)",
+            "var(--surface-secondary)",
 
           color:
-            "var(--primary-foreground)",
+            "var(--foreground)",
         }}
       >
-        <HandCoins
-          size={15}
+        <WalletCards
+          size={14}
         />
 
-        Lend Money
+        Record Borrowing
       </Link>
     </div>
   );
 }
 
+function EmptyHistory({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div
+      className="mt-3 rounded-[var(--radius-lg)] px-5 py-6"
+      style={{
+        backgroundColor:
+          "var(--surface)",
+
+        border:
+          "1px solid var(--border)",
+      }}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+          style={{
+            backgroundColor:
+              "var(--surface-secondary)",
+
+            color:
+              "var(--foreground-muted)",
+          }}
+        >
+          <Check
+            size={15}
+          />
+        </div>
+
+        <div>
+          <p className="text-sm font-semibold">
+            {title}
+          </p>
+
+          <p
+            className="mt-1 text-[10px] leading-4"
+            style={{
+              color:
+                "var(--foreground-muted)",
+            }}
+          >
+            {description}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function formatKathmanduDate(
-  value:
-    string
+  value: string
 ) {
   return new Intl.DateTimeFormat(
     "en-US",
@@ -969,8 +1586,7 @@ function formatKathmanduDate(
 }
 
 function formatDateOnly(
-  value:
-    string
+  value: string
 ) {
   const [
     year,
@@ -984,10 +1600,18 @@ function formatDateOnly(
   const date =
     new Date(
       Date.UTC(
-        Number(year),
-        Number(month) -
+        Number(
+          year
+        ),
+
+        Number(
+          month
+        ) -
           1,
-        Number(day)
+
+        Number(
+          day
+        )
       )
     );
 

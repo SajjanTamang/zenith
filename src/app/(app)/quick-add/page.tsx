@@ -4,6 +4,12 @@ import {
 
 import {
   calculateAccountBalances,
+  type FinanceBorrowing,
+  type FinanceBorrowingRepayment,
+  type FinanceGameSession,
+  type FinanceLoan,
+  type FinanceLoanRepayment,
+  type FinanceTransaction,
 } from "@/lib/finance";
 
 import {
@@ -38,6 +44,29 @@ type QuickAddAccount = {
     | null;
 };
 
+type QuickAddSession =
+  FinanceGameSession & {
+    id: string;
+
+    playing_amount:
+      | string
+      | number;
+
+    game_type:
+      string;
+
+    note:
+      | string
+      | null;
+
+    started_at:
+      string;
+
+    ended_at:
+      | string
+      | null;
+  };
+
 export default async function QuickAddPage({
   searchParams,
 }: QuickAddPageProps) {
@@ -63,6 +92,8 @@ export default async function QuickAddPage({
     sessionsResult,
     loansResult,
     repaymentsResult,
+    borrowingsResult,
+    borrowingRepaymentsResult,
   ] =
     await Promise.all([
       supabase
@@ -131,6 +162,7 @@ export default async function QuickAddPage({
           source_account_id,
           principal_amount,
           game_session_id,
+          claim_type,
           note,
           lent_at,
           due_date
@@ -148,6 +180,34 @@ export default async function QuickAddPage({
           note,
           repaid_at
         `),
+
+      supabase
+        .from(
+          "borrowings"
+        )
+        .select(`
+          id,
+          person_id,
+          to_account_id,
+          principal_amount,
+          game_session_id,
+          note,
+          borrowed_at,
+          due_date
+        `),
+
+      supabase
+        .from(
+          "borrowing_repayments"
+        )
+        .select(`
+          id,
+          borrowing_id,
+          from_account_id,
+          amount,
+          note,
+          repaid_at
+        `),
     ]);
 
   const error =
@@ -155,7 +215,9 @@ export default async function QuickAddPage({
     transactionsResult.error ??
     sessionsResult.error ??
     loansResult.error ??
-    repaymentsResult.error;
+    repaymentsResult.error ??
+    borrowingsResult.error ??
+    borrowingRepaymentsResult.error;
 
   if (
     error
@@ -183,46 +245,58 @@ export default async function QuickAddPage({
     );
   }
 
-  /*
-    Keep ALL accounts here.
-
-    Archived accounts still belong to
-    historical transactions and must
-    remain part of balance calculations.
-  */
   const accounts =
     (accountsResult.data ??
       []) as QuickAddAccount[];
 
   const transactions =
-    transactionsResult.data ??
-    [];
+    (transactionsResult.data ??
+      []) as FinanceTransaction[];
 
   const sessions =
-    sessionsResult.data ??
-    [];
+    (sessionsResult.data ??
+      []) as QuickAddSession[];
 
   const loans =
-    loansResult.data ??
-    [];
+    (loansResult.data ??
+      []) as FinanceLoan[];
 
   const repayments =
-    repaymentsResult.data ??
-    [];
+    (repaymentsResult.data ??
+      []) as FinanceLoanRepayment[];
 
+  const borrowings =
+    (borrowingsResult.data ??
+      []) as FinanceBorrowing[];
+
+  const borrowingRepayments =
+    (borrowingRepaymentsResult.data ??
+      []) as FinanceBorrowingRepayment[];
+
+  /*
+    Balances used inside Quick Add must match
+    Dashboard, Accounts and Game Sessions.
+
+    Borrowed money received into an account
+    is available money.
+
+    Borrowing repayments reduce it.
+  */
   const balances =
     calculateAccountBalances(
       accounts,
       transactions,
       sessions,
       loans,
-      repayments
+      repayments,
+      borrowings,
+      borrowingRepayments
     );
 
   /*
-    Only ACTIVE accounts may be selected
-    for new income, expenses, transfers
-    and lending.
+    Archived accounts remain part of historical
+    calculations but cannot be selected for new
+    money movement.
   */
   const activeAccounts =
     accounts.filter(
@@ -281,21 +355,12 @@ export default async function QuickAddPage({
         })
       );
 
-  /*
-    Only preselect Lend when the URL
-    explicitly requests type=lend.
-  */
   const initialEntryType =
     requestedType ===
     "lend"
       ? "lend"
       : undefined;
 
-  /*
-    Only accept a requested game
-    session if that session is
-    still active.
-  */
   const validRequestedSession =
     requestedSessionId &&
     activeSessions.some(

@@ -36,6 +36,11 @@ type Account = {
   archived: boolean;
 };
 
+type ClaimType =
+  | "loan"
+  | "game_winnings"
+  | "other";
+
 export function RepaymentHistoryItem({
   repaymentId,
   initialAccountId,
@@ -47,6 +52,7 @@ export function RepaymentHistoryItem({
   maxAmountCents,
   accounts,
   borderTop,
+  claimType = "loan",
 }: {
   repaymentId: string;
   initialAccountId: string;
@@ -62,6 +68,8 @@ export function RepaymentHistoryItem({
   accounts: Account[];
 
   borderTop: boolean;
+
+  claimType?: ClaimType;
 }) {
   const router =
     useRouter();
@@ -139,6 +147,23 @@ export function RepaymentHistoryItem({
       maxAmountCents
     );
 
+  const isGameWinnings =
+    claimType ===
+    "game_winnings";
+
+  const isReceivable =
+    claimType ===
+      "game_winnings" ||
+    claimType ===
+      "other";
+
+  const historyTitle =
+    isGameWinnings
+      ? "Winnings collected"
+      : isReceivable
+        ? "Collection"
+        : "Repayment";
+
   function resetForm() {
     setAccountId(
       initialAccountId
@@ -185,7 +210,11 @@ export function RepaymentHistoryItem({
       )
     ) {
       setError(
-        "Enter a repayment amount greater than 0 with no more than 2 decimal places."
+        `Enter a ${
+          isReceivable
+            ? "collection"
+            : "repayment"
+        } amount greater than 0 with no more than 2 decimal places.`
       );
 
       return;
@@ -195,7 +224,7 @@ export function RepaymentHistoryItem({
       !accountId
     ) {
       setError(
-        "Select the account receiving the repayment."
+        "Select the account receiving the money."
       );
 
       return;
@@ -211,7 +240,11 @@ export function RepaymentHistoryItem({
       maximumAmount
     ) {
       setError(
-        `This repayment can be at most NPR ${formatMoneyFromCents(
+        `This ${
+          isReceivable
+            ? "collection"
+            : "repayment"
+        } can be at most NPR ${formatMoneyFromCents(
           maximumAmount
         )}.`
       );
@@ -263,7 +296,9 @@ export function RepaymentHistoryItem({
     }
 
     setSuccess(
-      "Repayment updated."
+      isReceivable
+        ? "Collection updated."
+        : "Repayment updated."
     );
 
     setLoading(
@@ -286,9 +321,17 @@ export function RepaymentHistoryItem({
 
     const confirmed =
       window.confirm(
-        `Delete this NPR ${formatMoneyFromCents(
-          repaymentAmount
-        )} repayment? The money will be removed from the receiving account and the loan outstanding balance will increase again.`
+        isGameWinnings
+          ? `Delete this NPR ${formatMoneyFromCents(
+              repaymentAmount
+            )} winnings collection? The money will be removed from the receiving account and the winnings owed will increase again.`
+          : isReceivable
+            ? `Delete this NPR ${formatMoneyFromCents(
+                repaymentAmount
+              )} collection? The money will be removed from the receiving account and the amount owed will increase again.`
+            : `Delete this NPR ${formatMoneyFromCents(
+                repaymentAmount
+              )} repayment? The money will be removed from the receiving account and the loan outstanding balance will increase again.`
       );
 
     if (
@@ -383,7 +426,7 @@ export function RepaymentHistoryItem({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold">
-                Repayment
+                {historyTitle}
               </p>
 
               <p
@@ -525,7 +568,10 @@ export function RepaymentHistoryItem({
                 >
                   Restore the historical
                   receiving account before
-                  deleting this repayment
+                  deleting this{" "}
+                  {isReceivable
+                    ? "collection"
+                    : "repayment"}{" "}
                   or changing its money
                   movement.
                 </p>
@@ -545,7 +591,6 @@ export function RepaymentHistoryItem({
                     "var(--surface-secondary)",
                 }}
               >
-                {/* Amount */}
                 <EditRow>
                   <DetailIcon>
                     <RotateCcw
@@ -628,7 +673,6 @@ export function RepaymentHistoryItem({
                   </div>
                 </EditRow>
 
-                {/* Account */}
                 <EditRow
                   borderTop
                 >
@@ -703,7 +747,6 @@ export function RepaymentHistoryItem({
                   </div>
                 </EditRow>
 
-                {/* Note */}
                 <EditRow
                   borderTop
                 >

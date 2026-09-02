@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
+  Gamepad2,
   HandCoins,
   StickyNote,
   WalletCards,
@@ -118,6 +119,7 @@ export default async function LoanDetailPage({
           source_account_id,
           principal_amount,
           game_session_id,
+          claim_type,
           note,
           lent_at,
           due_date
@@ -199,11 +201,11 @@ export default async function LoanDetailPage({
             size={14}
           />
 
-          Lending
+          Money
         </Link>
 
         <h1 className="mt-5 text-2xl font-semibold tracking-tight">
-          Loan
+          Money owed
         </h1>
 
         <div
@@ -216,7 +218,8 @@ export default async function LoanDetailPage({
               "var(--negative)",
           }}
         >
-          Could not load loan:{" "}
+          Could not load
+          money owed:{" "}
           {loanResult.error
             ?.message ??
             repaymentsResult.error
@@ -251,6 +254,18 @@ export default async function LoanDetailPage({
     (accountsResult.data ??
       []) as Account[];
 
+  const claimType =
+    loan.claim_type ??
+    "loan";
+
+  const isGameWinnings =
+    claimType ===
+    "game_winnings";
+
+  const isOtherReceivable =
+    claimType ===
+    "other";
+
   const person =
     people.find(
       (
@@ -275,22 +290,19 @@ export default async function LoanDetailPage({
         ?.archived_at
     );
 
-  /*
-    Loan editing can use:
-    - all active accounts
-    - the current historical source account
-      even if it has been archived
-  */
   const loanEditAccounts =
     accounts
       .filter(
         (
           account
         ) =>
-          account.archived_at ===
-            null ||
-          account.id ===
-            loan.source_account_id
+          isGameWinnings
+            ? account.id ===
+              loan.source_account_id
+            : account.archived_at ===
+                null ||
+              account.id ===
+                loan.source_account_id
       )
       .map(
         (
@@ -308,10 +320,6 @@ export default async function LoanDetailPage({
         })
       );
 
-  /*
-    New repayments can only go
-    into active accounts.
-  */
   const repaymentAccounts =
     accounts
       .filter(
@@ -449,6 +457,66 @@ export default async function LoanDetailPage({
       )
     );
 
+  const eyebrow =
+    isGameWinnings
+      ? "Game winnings owed"
+      : isOtherReceivable
+        ? "Receivable"
+        : "Money owed";
+
+  const datePrefix =
+    isGameWinnings ||
+    isOtherReceivable
+      ? "Recorded"
+      : "Lent";
+
+  const completedLabel =
+    isGameWinnings
+      ? "Winnings collected"
+      : isOtherReceivable
+        ? "Receivable collected"
+        : "Loan repaid";
+
+  const detailsTitle =
+    isGameWinnings
+      ? "Game winnings details"
+      : isOtherReceivable
+        ? "Receivable details"
+        : "Loan details";
+
+  const principalLabel =
+    isGameWinnings
+      ? "Winnings owed"
+      : isOtherReceivable
+        ? "Original receivable"
+        : "Originally lent";
+
+  const returnedLabel =
+    isGameWinnings ||
+    isOtherReceivable
+      ? "Collected"
+      : "Returned";
+
+  const sourceLabel =
+    isGameWinnings
+      ? "Reclassified from"
+      : isOtherReceivable
+        ? "From account"
+        : "Lent from";
+
+  const dateLabel =
+    isGameWinnings ||
+    isOtherReceivable
+      ? "Recorded on"
+      : "Lent on";
+
+  const originalHistoryTitle =
+    isGameWinnings
+      ? "Game winnings owed"
+      : isOtherReceivable
+        ? "Receivable recorded"
+        : "Money lent";
+
   return (
     <div>
       <Link
@@ -463,10 +531,9 @@ export default async function LoanDetailPage({
           size={14}
         />
 
-        Lending
+        Money
       </Link>
 
-      {/* Header */}
       <div className="mt-5">
         <p
           className="text-[10px] font-medium uppercase tracking-[0.14em]"
@@ -475,12 +542,12 @@ export default async function LoanDetailPage({
               "var(--foreground-muted)",
           }}
         >
-          Money owed
+          {eyebrow}
         </p>
 
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">
           {person?.name ??
-            "Loan"}
+            "Money owed"}
         </h1>
 
         <p
@@ -490,14 +557,13 @@ export default async function LoanDetailPage({
               "var(--foreground-muted)",
           }}
         >
-          Lent{" "}
+          {datePrefix}{" "}
           {formatKathmanduDate(
             loan.lent_at
           )}
         </p>
       </div>
 
-      {/* Outstanding */}
       <section
         className="mt-7 rounded-[var(--radius-lg)] p-5"
         style={{
@@ -518,7 +584,7 @@ export default async function LoanDetailPage({
               }}
             >
               {paid
-                ? "Loan repaid"
+                ? completedLabel
                 : "Outstanding"}
             </p>
 
@@ -579,6 +645,10 @@ export default async function LoanDetailPage({
               <AlertTriangle
                 size={18}
               />
+            ) : isGameWinnings ? (
+              <Gamepad2
+                size={18}
+              />
             ) : (
               <HandCoins
                 size={18}
@@ -588,7 +658,6 @@ export default async function LoanDetailPage({
         </div>
       </section>
 
-      {/* Loan details */}
       <section className="mt-7">
         <p
           className="text-[10px] font-medium uppercase tracking-[0.14em]"
@@ -597,7 +666,7 @@ export default async function LoanDetailPage({
               "var(--foreground-muted)",
           }}
         >
-          Loan details
+          {detailsTitle}
         </p>
 
         <div
@@ -611,14 +680,18 @@ export default async function LoanDetailPage({
           }}
         >
           <SummaryRow
-            label="Originally lent"
+            label={
+              principalLabel
+            }
             value={`NPR ${formatMoneyFromCents(
               principal
             )}`}
           />
 
           <SummaryRow
-            label="Returned"
+            label={
+              returnedLabel
+            }
             value={`NPR ${formatMoneyFromCents(
               returned
             )}`}
@@ -632,7 +705,9 @@ export default async function LoanDetailPage({
           />
 
           <SummaryRow
-            label="Lent from"
+            label={
+              sourceLabel
+            }
             value={
               sourceAccount
                 ?.name ??
@@ -642,7 +717,9 @@ export default async function LoanDetailPage({
           />
 
           <SummaryRow
-            label="Lent on"
+            label={
+              dateLabel
+            }
             value={
               formatKathmanduDate(
                 loan.lent_at
@@ -651,22 +728,24 @@ export default async function LoanDetailPage({
             borderTop
           />
 
-          <SummaryRow
-            label="Due date"
-            value={
-              loan.due_date
-                ? formatDateOnly(
-                    loan.due_date
-                  )
-                : "No due date"
-            }
-            borderTop
-            valueColor={
-              overdue
-                ? "var(--negative)"
-                : undefined
-            }
-          />
+          {!isGameWinnings && (
+            <SummaryRow
+              label="Due date"
+              value={
+                loan.due_date
+                  ? formatDateOnly(
+                      loan.due_date
+                    )
+                  : "No due date"
+              }
+              borderTop
+              valueColor={
+                overdue
+                  ? "var(--negative)"
+                  : undefined
+              }
+            />
+          )}
 
           {gameSession && (
             <SummaryRow
@@ -680,7 +759,6 @@ export default async function LoanDetailPage({
         </div>
       </section>
 
-      {/* Note */}
       {loan.note && (
         <section className="mt-7">
           <p
@@ -731,7 +809,6 @@ export default async function LoanDetailPage({
         </section>
       )}
 
-      {/* New repayment */}
       {!paid &&
         repaymentAccounts.length >
           0 && (
@@ -744,6 +821,9 @@ export default async function LoanDetailPage({
             }
             accounts={
               repaymentAccounts
+            }
+            claimType={
+              claimType
             }
           />
         )}
@@ -775,14 +855,13 @@ export default async function LoanDetailPage({
               >
                 Restore or create
                 an account before
-                recording a loan
-                repayment.
+                recording money
+                returned to you.
               </p>
             </div>
           </section>
         )}
 
-      {/* History */}
       <section className="mt-8">
         <div className="flex items-center justify-between gap-4">
           <h2
@@ -837,25 +916,10 @@ export default async function LoanDetailPage({
                   repayment.amount
                 );
 
-              /*
-                The current outstanding
-                already includes this repayment.
-
-                Add the current repayment back
-                to calculate the maximum this
-                individual repayment can become.
-              */
               const maxAmount =
                 outstanding +
                 currentRepayment;
 
-              /*
-                Repayment editing can choose
-                active accounts.
-
-                Its current historical account
-                stays visible even if archived.
-              */
               const editorAccounts =
                 accounts
                   .filter(
@@ -926,6 +990,9 @@ export default async function LoanDetailPage({
                     index >
                     0
                   }
+                  claimType={
+                    claimType
+                  }
                 />
               );
             }
@@ -950,11 +1017,16 @@ export default async function LoanDetailPage({
               repayments.length >
               0
             }
+            title={
+              originalHistoryTitle
+            }
+            gameWinnings={
+              isGameWinnings
+            }
           />
         </div>
       </section>
 
-      {/* Loan management */}
       <LoanActions
         loanId={
           loan.id
@@ -990,6 +1062,9 @@ export default async function LoanDetailPage({
         }
         accounts={
           loanEditAccounts
+        }
+        claimType={
+          claimType
         }
       />
     </div>
@@ -1047,6 +1122,8 @@ function LoanHistoryRow({
   accountName,
   note,
   borderTop,
+  title,
+  gameWinnings,
 }: {
   date: string;
   amount: bigint;
@@ -1057,6 +1134,8 @@ function LoanHistoryRow({
     | null;
 
   borderTop: boolean;
+  title: string;
+  gameWinnings: boolean;
 }) {
   return (
     <div
@@ -1078,16 +1157,22 @@ function LoanHistoryRow({
             "var(--primary)",
         }}
       >
-        <WalletCards
-          size={15}
-        />
+        {gameWinnings ? (
+          <Gamepad2
+            size={15}
+          />
+        ) : (
+          <WalletCards
+            size={15}
+          />
+        )}
       </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-semibold">
-              Money lent
+              {title}
             </p>
 
             <p
@@ -1181,7 +1266,8 @@ function formatDateOnly(
 
         Number(
           month
-        ) - 1,
+        ) -
+          1,
 
         Number(
           day

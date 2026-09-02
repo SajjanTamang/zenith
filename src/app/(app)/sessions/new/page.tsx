@@ -5,6 +5,8 @@ import {
 import {
   calculateAccountBalances,
   type FinanceAccount,
+  type FinanceBorrowing,
+  type FinanceBorrowingRepayment,
   type FinanceGameSession,
   type FinanceLoan,
   type FinanceLoanRepayment,
@@ -17,7 +19,8 @@ import {
 
 type SessionAccount =
   FinanceAccount & {
-    name: string;
+    name:
+      string;
 
     archived_at:
       | string
@@ -34,6 +37,8 @@ export default async function NewSessionPage() {
     gameSessionsResult,
     loansResult,
     repaymentsResult,
+    borrowingsResult,
+    borrowingRepaymentsResult,
   ] =
     await Promise.all([
       supabase
@@ -91,6 +96,7 @@ export default async function NewSessionPage() {
           source_account_id,
           principal_amount,
           game_session_id,
+          claim_type,
           note,
           lent_at,
           due_date
@@ -108,6 +114,34 @@ export default async function NewSessionPage() {
           note,
           repaid_at
         `),
+
+      supabase
+        .from(
+          "borrowings"
+        )
+        .select(`
+          id,
+          person_id,
+          to_account_id,
+          principal_amount,
+          game_session_id,
+          note,
+          borrowed_at,
+          due_date
+        `),
+
+      supabase
+        .from(
+          "borrowing_repayments"
+        )
+        .select(`
+          id,
+          borrowing_id,
+          from_account_id,
+          amount,
+          note,
+          repaid_at
+        `),
     ]);
 
   const error =
@@ -115,7 +149,9 @@ export default async function NewSessionPage() {
     transactionsResult.error ??
     gameSessionsResult.error ??
     loansResult.error ??
-    repaymentsResult.error;
+    repaymentsResult.error ??
+    borrowingsResult.error ??
+    borrowingRepaymentsResult.error;
 
   if (
     error
@@ -152,8 +188,9 @@ export default async function NewSessionPage() {
   }
 
   /*
-    Keep every account for historical
-    balance calculation.
+    Every account remains part of historical
+    balance calculation, including archived
+    accounts.
   */
   const accounts =
     (accountsResult.data ??
@@ -173,13 +210,18 @@ export default async function NewSessionPage() {
         []) as FinanceLoan[],
 
       (repaymentsResult.data ??
-        []) as FinanceLoanRepayment[]
+        []) as FinanceLoanRepayment[],
+
+      (borrowingsResult.data ??
+        []) as FinanceBorrowing[],
+
+      (borrowingRepaymentsResult.data ??
+        []) as FinanceBorrowingRepayment[]
     );
 
   /*
-    Archived accounts stay in the
-    calculation above but cannot be
-    selected for a new Game Session.
+    Archived accounts remain in calculations
+    but cannot be selected for new movement.
   */
   const activeAccounts =
     accounts.filter(
@@ -220,11 +262,20 @@ export default async function NewSessionPage() {
       );
 
   /*
-    Game Bankroll cannot fund another
-    Game Bankroll.
+    Cash, Bank, Wallet and Other accounts
+    may fund the Game Bankroll.
 
-    Cash, Bank, Wallet and Other
-    active accounts are valid sources.
+    Their displayed balance now includes:
+
+      owned money
+      + borrowed money received
+      - borrowing repayments
+
+    This is correct because the money is
+    genuinely available to play with.
+
+    Net worth will separately subtract the
+    outstanding debt.
   */
   const fundingAccounts =
     activeAccounts

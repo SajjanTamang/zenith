@@ -19,6 +19,10 @@ import {
 } from "next/navigation";
 
 import {
+  GameWinningsReceivableForm,
+} from "@/components/lending/game-winnings-receivable-form";
+
+import {
   SessionCorrectionForm,
 } from "@/components/sessions/session-correction-form";
 
@@ -195,6 +199,7 @@ export default async function SessionDetailPage({
           source_account_id,
           principal_amount,
           game_session_id,
+          claim_type,
           note,
           lent_at,
           due_date
@@ -385,7 +390,26 @@ export default async function SessionDetailPage({
         "Unknown account"
       : "Legacy session";
 
-  const totalLent =
+  /*
+    Loans table now contains:
+
+    loan
+    game_winnings
+    other
+
+    Everything is an asset owed to the user,
+    but game_winnings has different meaning.
+  */
+  const gameWinningsReceivables =
+    loans.filter(
+      (
+        loan
+      ) =>
+        loan.claim_type ===
+        "game_winnings"
+    );
+
+  const totalRecorded =
     loans.reduce(
       (
         total,
@@ -412,6 +436,43 @@ export default async function SessionDetailPage({
       BigInt(0)
     );
 
+  const totalGameWinningsRecorded =
+    gameWinningsReceivables.reduce(
+      (
+        total,
+        loan
+      ) =>
+        total +
+        moneyToCents(
+          loan.principal_amount
+        ),
+      BigInt(0)
+    );
+
+  const sessionWinAmount =
+    !isVoided &&
+    session.status ===
+      "completed" &&
+    session.result_type ===
+      "win" &&
+    session.result_amount !==
+      null
+      ? moneyToCents(
+          session.result_amount
+        )
+      : BigInt(0);
+
+  const remainingGameWinningsCapacity =
+    sessionWinAmount >
+    totalGameWinningsRecorded
+      ? sessionWinAmount -
+        totalGameWinningsRecorded
+      : BigInt(0);
+
+  const hasGameWinningsReceivable =
+    gameWinningsReceivables.length >
+    0;
+
   const hasAutomaticSettlement =
     Boolean(
       session.bankroll_account_id &&
@@ -433,11 +494,20 @@ export default async function SessionDetailPage({
   /*
     Money corrections need both automatic
     settlement accounts to remain active.
+
+    A Game Winnings receivable also locks
+    the financial result because that
+    receivable was created from this exact
+    winning result.
   */
-  const canCorrectMoney =
+  const accountsAllowCorrection =
     hasAutomaticSettlement &&
     !bankrollArchived &&
     !fundingArchived;
+
+  const canCorrectMoney =
+    accountsAllowCorrection &&
+    !hasGameWinningsReceivable;
 
   let moneyCorrectionReason:
     | string
@@ -445,6 +515,11 @@ export default async function SessionDetailPage({
       null;
 
   if (
+    hasGameWinningsReceivable
+  ) {
+    moneyCorrectionReason =
+      "This session has Game Winnings recorded as money owed to you. Resolve that receivable before changing the financial result. The game name and note can still be corrected.";
+  } else if (
     !hasAutomaticSettlement
   ) {
     moneyCorrectionReason =
@@ -461,21 +536,16 @@ export default async function SessionDetailPage({
       "Restore the original funding account before changing this session's final result.";
   }
 
-  /*
-    If P&L is already zero, voiding needs no
-    money movement and is safe even for a
-    legacy session.
-
-    Non-zero P&L requires the automatic
-    settlement accounts to be active.
-  */
   const voidNeedsMoney =
     pnl !==
     BigInt(0);
 
   const canVoid =
-    !voidNeedsMoney ||
-    canCorrectMoney;
+    !hasGameWinningsReceivable &&
+    (
+      !voidNeedsMoney ||
+      accountsAllowCorrection
+    );
 
   let voidBlockedReason:
     | string
@@ -483,6 +553,11 @@ export default async function SessionDetailPage({
       null;
 
   if (
+    hasGameWinningsReceivable
+  ) {
+    voidBlockedReason =
+      "This session has Game Winnings recorded as money owed to you. Resolve that receivable before voiding the session.";
+  } else if (
     voidNeedsMoney
   ) {
     if (
@@ -502,6 +577,18 @@ export default async function SessionDetailPage({
         "Restore the original funding account before voiding this session.";
     }
   }
+
+  const canRecordGameWinnings =
+    !isActive &&
+    !isVoided &&
+    session.result_type ===
+      "win" &&
+    sessionWinAmount >
+      BigInt(0) &&
+    Boolean(
+      session.funding_account_id
+    ) &&
+    !fundingArchived;
 
   return (
     <div className="pb-24">
@@ -979,7 +1066,7 @@ export default async function SessionDetailPage({
         </section>
       )}
 
-      {/* Related lending */}
+      {/* Related money owed */}
       <section className="mt-7">
         <div className="flex items-center justify-between gap-4">
           <p
@@ -989,7 +1076,7 @@ export default async function SessionDetailPage({
                 "var(--foreground-muted)",
             }}
           >
-            Related lending
+            Related money owed
           </p>
 
           <span
@@ -1004,8 +1091,8 @@ export default async function SessionDetailPage({
             }{" "}
             {loans.length ===
             1
-              ? "loan"
-              : "loans"}
+              ? "item"
+              : "items"}
           </span>
         </div>
 
@@ -1039,8 +1126,9 @@ export default async function SessionDetailPage({
 
               <div>
                 <p className="text-sm font-semibold">
-                  No lending
-                  attached
+                  Nothing owed
+                  from this
+                  session
                 </p>
 
                 <p
@@ -1050,9 +1138,11 @@ export default async function SessionDetailPage({
                       "var(--foreground-muted)",
                   }}
                 >
-                  Loans linked
-                  to this session
-                  will appear here.
+                  Loans and
+                  unpaid winnings
+                  linked to this
+                  session will
+                  appear here.
                 </p>
               </div>
             </div>
@@ -1070,9 +1160,9 @@ export default async function SessionDetailPage({
               }}
             >
               <MiniMetric
-                label="Total lent"
+                label="Total recorded"
                 value={`NPR ${formatMoneyFromCents(
-                  totalLent
+                  totalRecorded
                 )}`}
               />
 
@@ -1114,6 +1204,15 @@ export default async function SessionDetailPage({
                       repayments
                     );
 
+                  const claimLabel =
+                    loan.claim_type ===
+                    "game_winnings"
+                      ? "Game winnings"
+                      : loan.claim_type ===
+                          "other"
+                        ? "Receivable"
+                        : "Loan";
+
                   return (
                     <Link
                       key={
@@ -1141,9 +1240,16 @@ export default async function SessionDetailPage({
                             "var(--primary)",
                         }}
                       >
-                        <HandCoins
-                          size={16}
-                        />
+                        {loan.claim_type ===
+                        "game_winnings" ? (
+                          <Gamepad2
+                            size={16}
+                          />
+                        ) : (
+                          <HandCoins
+                            size={16}
+                          />
+                        )}
                       </div>
 
                       <div className="min-w-0 flex-1">
@@ -1161,7 +1267,9 @@ export default async function SessionDetailPage({
                               "var(--foreground-muted)",
                           }}
                         >
-                          Lent NPR{" "}
+                          {claimLabel}
+                          {" • "}
+                          NPR{" "}
                           {formatMoneyFromCents(
                             principal
                           )}
@@ -1208,6 +1316,113 @@ export default async function SessionDetailPage({
           </>
         )}
       </section>
+
+      {/* Game winnings owed */}
+      {canRecordGameWinnings &&
+        remainingGameWinningsCapacity >
+          BigInt(0) &&
+        session.funding_account_id &&
+        fundingAccount && (
+          <GameWinningsReceivableForm
+            sessionId={
+              session.id
+            }
+            settlementAccountId={
+              session.funding_account_id
+            }
+            settlementAccountName={
+              fundingAccount.name
+            }
+            remainingCapacityCents={
+              remainingGameWinningsCapacity.toString()
+            }
+            alreadyRecordedCents={
+              totalGameWinningsRecorded.toString()
+            }
+          />
+        )}
+
+      {!isActive &&
+        !isVoided &&
+        session.result_type ===
+          "win" &&
+        sessionWinAmount >
+          BigInt(0) &&
+        fundingArchived && (
+          <section
+            className="mt-8 rounded-[var(--radius-lg)] p-4"
+            style={{
+              backgroundColor:
+                "var(--surface)",
+
+              border:
+                "1px solid var(--border)",
+            }}
+          >
+            <p className="text-sm font-semibold">
+              Winnings owed
+              unavailable
+            </p>
+
+            <p
+              className="mt-2 text-[10px] leading-5"
+              style={{
+                color:
+                  "var(--foreground-muted)",
+              }}
+            >
+              Restore the
+              original settlement
+              account before
+              recording unpaid
+              game winnings.
+            </p>
+          </section>
+        )}
+
+      {!isActive &&
+        !isVoided &&
+        session.result_type ===
+          "win" &&
+        sessionWinAmount >
+          BigInt(0) &&
+        remainingGameWinningsCapacity ===
+          BigInt(0) &&
+        totalGameWinningsRecorded >
+          BigInt(0) && (
+          <section
+            className="mt-8 rounded-[var(--radius-lg)] p-4"
+            style={{
+              backgroundColor:
+                "var(--surface)",
+
+              border:
+                "1px solid var(--border)",
+            }}
+          >
+            <p className="text-sm font-semibold">
+              Game winnings
+              fully allocated
+            </p>
+
+            <p
+              className="mt-2 text-[10px] leading-5"
+              style={{
+                color:
+                  "var(--foreground-muted)",
+              }}
+            >
+              NPR{" "}
+              {formatMoneyFromCents(
+                totalGameWinningsRecorded
+              )}{" "}
+              from this session
+              has already been
+              recorded as money
+              owed to you.
+            </p>
+          </section>
+        )}
 
       {/* Completed session correction */}
       {!isActive &&

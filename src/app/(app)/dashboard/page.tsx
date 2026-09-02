@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Gamepad2,
   HandCoins,
+  WalletCards,
 } from "lucide-react";
 
 import {
@@ -20,15 +21,19 @@ import {
 } from "@/lib/activity";
 
 import {
+  borrowingOutstandingBalance,
   calculateAccountBalances,
   isInCurrentKathmanduMonth,
   loanOutstandingBalance,
   totalAccountTypeBalance,
   totalBalanceFromAccounts,
   totalNetWorth,
+  totalOutstandingBorrowings,
   totalOutstandingLoans,
   totalTransactionsByType,
   type FinanceAccount,
+  type FinanceBorrowing,
+  type FinanceBorrowingRepayment,
   type FinanceGameSession,
   type FinanceLoan,
   type FinanceLoanRepayment,
@@ -130,6 +135,17 @@ type DashboardLoanRepayment =
     repaid_at: string;
   };
 
+type DashboardBorrowing =
+  FinanceBorrowing & {
+    borrowed_at: string;
+  };
+
+type DashboardBorrowingRepayment =
+  FinanceBorrowingRepayment & {
+    id: string;
+    repaid_at: string;
+  };
+
 export default async function DashboardPage({
   searchParams,
 }: DashboardPageProps) {
@@ -139,13 +155,6 @@ export default async function DashboardPage({
   const params =
     await searchParams;
 
-  /*
-    The top Dashboard always uses
-    the real current month.
-
-    pnlMonth only controls the
-    historical P&L calendar.
-  */
   const currentMonthKey =
     kathmanduMonthKey(
       new Date()
@@ -169,6 +178,8 @@ export default async function DashboardPage({
     loanPeopleResult,
     loansResult,
     repaymentsResult,
+    borrowingsResult,
+    borrowingRepaymentsResult,
   ] =
     await Promise.all([
       supabase
@@ -237,6 +248,7 @@ export default async function DashboardPage({
           source_account_id,
           principal_amount,
           game_session_id,
+          claim_type,
           note,
           lent_at,
           due_date
@@ -254,6 +266,34 @@ export default async function DashboardPage({
           note,
           repaid_at
         `),
+
+      supabase
+        .from(
+          "borrowings"
+        )
+        .select(`
+          id,
+          person_id,
+          to_account_id,
+          principal_amount,
+          game_session_id,
+          note,
+          borrowed_at,
+          due_date
+        `),
+
+      supabase
+        .from(
+          "borrowing_repayments"
+        )
+        .select(`
+          id,
+          borrowing_id,
+          from_account_id,
+          amount,
+          note,
+          repaid_at
+        `),
     ]);
 
   const error =
@@ -262,7 +302,9 @@ export default async function DashboardPage({
     gameSessionsResult.error ??
     loanPeopleResult.error ??
     loansResult.error ??
-    repaymentsResult.error;
+    repaymentsResult.error ??
+    borrowingsResult.error ??
+    borrowingRepaymentsResult.error;
 
   if (
     error
@@ -325,25 +367,23 @@ export default async function DashboardPage({
     (repaymentsResult.data ??
       []) as DashboardLoanRepayment[];
 
-  /*
-    Account balance calculation still receives
-    every Game Session.
+  const typedBorrowings =
+    (borrowingsResult.data ??
+      []) as DashboardBorrowing[];
 
-    This is correct because a voided session's
-    CURRENT stored result is EVEN / 0 and its
-    balance correction transfer is stored in
-    transactions.
+  const typedBorrowingRepayments =
+    (borrowingRepaymentsResult.data ??
+      []) as DashboardBorrowingRepayment[];
 
-    Therefore finance.ts sees the correct
-    current account money.
-  */
   const accountBalances =
     calculateAccountBalances(
       typedAccounts,
       typedTransactions,
       typedGameSessions,
       typedLoans,
-      typedRepayments
+      typedRepayments,
+      typedBorrowings,
+      typedBorrowingRepayments
     );
 
   const availableBalance =
@@ -357,11 +397,19 @@ export default async function DashboardPage({
       typedRepayments
     );
 
+  const outstandingBorrowing =
+    totalOutstandingBorrowings(
+      typedBorrowings,
+      typedBorrowingRepayments
+    );
+
   const netWorth =
     totalNetWorth(
       accountBalances,
       typedLoans,
-      typedRepayments
+      typedRepayments,
+      typedBorrowings,
+      typedBorrowingRepayments
     );
 
   const outstandingLoans =
@@ -389,9 +437,31 @@ export default async function DashboardPage({
       )
     ).size;
 
-  /*
-    Current Kathmandu-month income.
-  */
+  const outstandingBorrowings =
+    typedBorrowings.filter(
+      (
+        borrowing
+      ) =>
+        borrowingOutstandingBalance(
+          borrowing,
+          typedBorrowingRepayments
+        ) >
+        BigInt(0)
+    );
+
+  const outstandingBorrowingCount =
+    outstandingBorrowings.length;
+
+  const outstandingDebtPeopleCount =
+    new Set(
+      outstandingBorrowings.map(
+        (
+          borrowing
+        ) =>
+          borrowing.person_id
+      )
+    ).size;
+
   const monthlyIncome =
     totalTransactionsByType(
       typedTransactions,
@@ -407,9 +477,6 @@ export default async function DashboardPage({
         )
     );
 
-  /*
-    Current Kathmandu-month expenses.
-  */
   const monthlyExpenses =
     totalTransactionsByType(
       typedTransactions,
@@ -425,9 +492,6 @@ export default async function DashboardPage({
         )
     );
 
-  /*
-    Current Game Bankroll account balance.
-  */
   const bankroll =
     totalAccountTypeBalance(
       typedAccounts,
@@ -435,21 +499,11 @@ export default async function DashboardPage({
       "game_bankroll"
     );
 
-  /*
-    Shared analytics now automatically
-    exclude voided sessions.
-  */
   const thisMonthGame =
     getCurrentMonthGameAnalytics(
       typedGameSessions
     );
 
-  /*
-    Only the selected historical month
-    is passed to the calendar analytics.
-
-    Voided sessions are explicitly excluded.
-  */
   const selectedMonthSessions =
     typedGameSessions.filter(
       (
@@ -469,30 +523,11 @@ export default async function DashboardPage({
       selectedMonthSessions
     );
 
-  /*
-    Current monthly movement:
-
-      Income
-      - Expenses
-      + real Game P&L
-
-    Voided Game Sessions contribute zero
-    because the analytics helper excludes them.
-  */
   const monthlyNetMovement =
     monthlyIncome -
     monthlyExpenses +
     thisMonthGame.totalPnL;
 
-  /*
-    Until the central Activity helper is
-    updated in the next checkpoint, prevent
-    a voided Game Session from appearing as
-    a normal game-result Activity item here.
-
-    Its protected correction transaction
-    remains part of the financial audit trail.
-  */
   const activityGameSessions =
     typedGameSessions.filter(
       (
@@ -516,9 +551,15 @@ export default async function DashboardPage({
       5
     );
 
+  const showMoneySection =
+    outstandingLending >
+      BigInt(0) ||
+    outstandingBorrowing >
+      BigInt(0);
+
   return (
     <div>
-      {/* Available Balance Hero */}
+      {/* Available Balance */}
       <section
         className="rounded-[var(--radius-lg)] px-5 py-6"
         style={{
@@ -632,8 +673,8 @@ export default async function DashboardPage({
         </div>
       </section>
 
-      {outstandingLending >
-        BigInt(0) && (
+      {/* Money */}
+      {showMoneySection && (
         <section className="mt-8">
           <p
             className="text-[10px] font-medium uppercase tracking-[0.14em]"
@@ -655,70 +696,148 @@ export default async function DashboardPage({
                 "1px solid var(--border)",
             }}
           >
-            <Link
-              href="/lending"
-              className="flex items-center gap-3 px-4 py-4 transition"
-            >
-              <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-sm)]"
-                style={{
-                  backgroundColor:
-                    "rgba(0, 102, 255, 0.10)",
-
-                  color:
-                    "var(--primary)",
-                }}
+            {outstandingLending >
+              BigInt(0) && (
+              <Link
+                href="/lending"
+                className="flex items-center gap-3 px-4 py-4 transition"
               >
-                <HandCoins
-                  size={17}
-                />
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <p
-                  className="text-[9px] font-medium uppercase tracking-[0.14em]"
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-sm)]"
                   style={{
-                    color:
-                      "var(--foreground-muted)",
-                  }}
-                >
-                  Money lent out
-                </p>
+                    backgroundColor:
+                      "rgba(0, 102, 255, 0.10)",
 
-                <p
-                  className="mt-1 text-base font-semibold tabular-nums"
-                  style={{
                     color:
                       "var(--primary)",
                   }}
                 >
-                  {formatBalance(
-                    outstandingLending
-                  )}
-                </p>
+                  <HandCoins
+                    size={17}
+                  />
+                </div>
 
-                <p
-                  className="mt-1 text-[9px]"
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="text-[9px] font-medium uppercase tracking-[0.14em]"
+                    style={{
+                      color:
+                        "var(--foreground-muted)",
+                    }}
+                  >
+                    Money owed to you
+                  </p>
+
+                  <p
+                    className="mt-1 text-base font-semibold tabular-nums"
+                    style={{
+                      color:
+                        "var(--primary)",
+                    }}
+                  >
+                    {formatBalance(
+                      outstandingLending
+                    )}
+                  </p>
+
+                  <p
+                    className="mt-1 text-[9px]"
+                    style={{
+                      color:
+                        "var(--foreground-muted)",
+                    }}
+                  >
+                    {getLendingSummary(
+                      outstandingLoanCount,
+                      outstandingPeopleCount
+                    )}
+                  </p>
+                </div>
+
+                <ChevronRight
+                  size={15}
                   style={{
                     color:
                       "var(--foreground-muted)",
                   }}
-                >
-                  {getLendingSummary(
-                    outstandingLoanCount,
-                    outstandingPeopleCount
-                  )}
-                </p>
-              </div>
+                />
+              </Link>
+            )}
 
-              <ChevronRight
-                size={15}
+            {outstandingBorrowing >
+              BigInt(0) && (
+              <Link
+                href="/lending"
+                className="flex items-center gap-3 px-4 py-4 transition"
                 style={{
-                  color:
-                    "var(--foreground-muted)",
+                  borderTop:
+                    outstandingLending >
+                    BigInt(0)
+                      ? "1px solid var(--border)"
+                      : undefined,
                 }}
-              />
-            </Link>
+              >
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-sm)]"
+                  style={{
+                    backgroundColor:
+                      "var(--negative-soft)",
+
+                    color:
+                      "var(--negative)",
+                  }}
+                >
+                  <WalletCards
+                    size={17}
+                  />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="text-[9px] font-medium uppercase tracking-[0.14em]"
+                    style={{
+                      color:
+                        "var(--foreground-muted)",
+                    }}
+                  >
+                    Money you owe
+                  </p>
+
+                  <p
+                    className="mt-1 text-base font-semibold tabular-nums"
+                    style={{
+                      color:
+                        "var(--negative)",
+                    }}
+                  >
+                    {formatBalance(
+                      outstandingBorrowing
+                    )}
+                  </p>
+
+                  <p
+                    className="mt-1 text-[9px]"
+                    style={{
+                      color:
+                        "var(--foreground-muted)",
+                    }}
+                  >
+                    {getBorrowingSummary(
+                      outstandingBorrowingCount,
+                      outstandingDebtPeopleCount
+                    )}
+                  </p>
+                </div>
+
+                <ChevronRight
+                  size={15}
+                  style={{
+                    color:
+                      "var(--foreground-muted)",
+                  }}
+                />
+              </Link>
+            )}
 
             <div
               className="flex items-center justify-between gap-5 px-4 py-4"
@@ -745,8 +864,8 @@ export default async function DashboardPage({
                       "var(--foreground-muted)",
                   }}
                 >
-                  Available + money
-                  lent out
+                  Available + owed
+                  to you - you owe
                 </p>
               </div>
 
@@ -760,7 +879,7 @@ export default async function DashboardPage({
         </section>
       )}
 
-      {/* Historical P&L Calendar */}
+      {/* P&L Calendar */}
       <section
         className="mt-8 border-t pt-7"
         style={{
@@ -1327,11 +1446,11 @@ function getLendingSummary(
     return "Nobody owes you money";
   }
 
-  const loanLabel =
+  const itemLabel =
     loanCount ===
     1
-      ? "loan"
-      : "loans";
+      ? "item"
+      : "items";
 
   const peopleLabel =
     peopleCount ===
@@ -1339,7 +1458,33 @@ function getLendingSummary(
       ? "person"
       : "people";
 
-  return `${loanCount} ${loanLabel} • ${peopleCount} ${peopleLabel}`;
+  return `${loanCount} ${itemLabel} • ${peopleCount} ${peopleLabel}`;
+}
+
+function getBorrowingSummary(
+  borrowingCount: number,
+  peopleCount: number
+) {
+  if (
+    borrowingCount ===
+    0
+  ) {
+    return "You do not owe anyone";
+  }
+
+  const debtLabel =
+    borrowingCount ===
+    1
+      ? "debt"
+      : "debts";
+
+  const peopleLabel =
+    peopleCount ===
+    1
+      ? "person"
+      : "people";
+
+  return `${borrowingCount} ${debtLabel} • ${peopleCount} ${peopleLabel}`;
 }
 
 function formatKathmanduShortDate(

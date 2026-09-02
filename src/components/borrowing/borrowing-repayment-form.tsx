@@ -31,21 +31,14 @@ type Account = {
   name: string;
 };
 
-type ClaimType =
-  | "loan"
-  | "game_winnings"
-  | "other";
-
-export function RepaymentForm({
-  loanId,
+export function BorrowingRepaymentForm({
+  borrowingId,
   outstandingCents,
   accounts,
-  claimType = "loan",
 }: {
-  loanId: string;
+  borrowingId: string;
   outstandingCents: string;
   accounts: Account[];
-  claimType?: ClaimType;
 }) {
   const router =
     useRouter();
@@ -94,33 +87,6 @@ export function RepaymentForm({
       outstandingCents
     );
 
-  const isGameWinnings =
-    claimType ===
-    "game_winnings";
-
-  const isReceivable =
-    claimType ===
-      "game_winnings" ||
-    claimType ===
-      "other";
-
-  const sectionLabel =
-    isReceivable
-      ? "Collection"
-      : "Repayment";
-
-  const heading =
-    isGameWinnings
-      ? "Record winnings collected"
-      : isReceivable
-        ? "Record money collected"
-        : "Record money returned";
-
-  const actionLabel =
-    isReceivable
-      ? "Record Collection"
-      : "Record Repayment";
-
   async function handleSubmit(
     event:
       FormEvent<HTMLFormElement>
@@ -139,11 +105,7 @@ export function RepaymentForm({
       )
     ) {
       setError(
-        `Enter a ${
-          isReceivable
-            ? "collection"
-            : "repayment"
-        } amount greater than 0 with no more than 2 decimal places.`
+        "Enter a repayment amount greater than 0 with no more than 2 decimal places."
       );
 
       return;
@@ -153,7 +115,7 @@ export function RepaymentForm({
       !accountId
     ) {
       setError(
-        "Select the account receiving the money."
+        "Select the account paying the money."
       );
 
       return;
@@ -169,15 +131,9 @@ export function RepaymentForm({
       outstanding
     ) {
       setError(
-        `${
-          isGameWinnings
-            ? "These winnings"
-            : isReceivable
-              ? "This receivable"
-              : "This loan"
-        } only has NPR ${formatMoneyFromCents(
+        `You only owe NPR ${formatMoneyFromCents(
           outstanding
-        )} outstanding.`
+        )}.`
       );
 
       return;
@@ -192,32 +148,31 @@ export function RepaymentForm({
 
     const {
       error:
-        insertError,
+        repaymentError,
     } =
-      await supabase
-        .from(
-          "loan_repayments"
-        )
-        .insert({
-          loan_id:
-            loanId,
+      await supabase.rpc(
+        "record_borrowing_repayment",
+        {
+          p_borrowing_id:
+            borrowingId,
 
-          to_account_id:
+          p_from_account_id:
             accountId,
 
-          amount:
+          p_amount:
             cleanAmount,
 
-          note:
+          p_note:
             note.trim() ||
             null,
-        });
+        }
+      );
 
     if (
-      insertError
+      repaymentError
     ) {
       setError(
-        insertError.message
+        repaymentError.message
       );
 
       setLoading(
@@ -233,13 +188,7 @@ export function RepaymentForm({
     setSuccess(
       `NPR ${formatMoneyFromCents(
         amountCents
-      )} ${
-        isGameWinnings
-          ? "winnings collected"
-          : isReceivable
-            ? "collection recorded"
-            : "repayment recorded"
-      }.`
+      )} debt repayment recorded.`
     );
 
     setLoading(
@@ -254,6 +203,40 @@ export function RepaymentForm({
     BigInt(0)
   ) {
     return null;
+  }
+
+  if (
+    accounts.length ===
+    0
+  ) {
+    return (
+      <div
+        className="mt-8 rounded-[var(--radius-lg)] p-5"
+        style={{
+          backgroundColor:
+            "var(--surface)",
+
+          border:
+            "1px solid var(--border)",
+        }}
+      >
+        <p className="text-sm font-semibold">
+          No account available
+        </p>
+
+        <p
+          className="mt-2 text-xs leading-5"
+          style={{
+            color:
+              "var(--foreground-muted)",
+          }}
+        >
+          Restore or create an
+          active account before
+          repaying this debt.
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -272,11 +255,11 @@ export function RepaymentForm({
                 "var(--foreground-muted)",
             }}
           >
-            {sectionLabel}
+            Repayment
           </p>
 
           <h2 className="mt-1 text-sm font-semibold">
-            {heading}
+            Pay money back
           </h2>
         </div>
 
@@ -284,10 +267,10 @@ export function RepaymentForm({
           className="flex h-9 w-9 items-center justify-center rounded-full"
           style={{
             backgroundColor:
-              "var(--positive-soft)",
+              "var(--negative-soft)",
 
             color:
-              "var(--positive)",
+              "var(--negative)",
           }}
         >
           <RotateCcw
@@ -296,6 +279,7 @@ export function RepaymentForm({
         </div>
       </div>
 
+      {/* Amount */}
       <section className="mt-5">
         <div
           className="rounded-[var(--radius-lg)] px-4 py-4"
@@ -319,7 +303,7 @@ export function RepaymentForm({
             </span>
 
             <input
-              id="repayment-amount"
+              id="debt-repayment-amount"
               type="text"
               inputMode="decimal"
               autoComplete="off"
@@ -328,12 +312,16 @@ export function RepaymentForm({
               }
               onChange={(
                 event
-              ) =>
+              ) => {
                 setAmount(
                   event.target
                     .value
-                )
-              }
+                );
+
+                setError(
+                  ""
+                );
+              }}
               placeholder="0.00"
               disabled={
                 loading
@@ -369,6 +357,7 @@ export function RepaymentForm({
         </div>
       </section>
 
+      {/* Details */}
       <section className="mt-4">
         <div
           className="overflow-hidden rounded-[var(--radius-lg)]"
@@ -389,30 +378,34 @@ export function RepaymentForm({
 
             <div className="min-w-0 flex-1">
               <label
-                htmlFor="repayment-account"
+                htmlFor="debt-repayment-account"
                 className="text-[9px] font-medium uppercase tracking-[0.11em]"
                 style={{
                   color:
                     "var(--foreground-muted)",
                 }}
               >
-                Receive into
+                Pay from
               </label>
 
               <div className="relative mt-1">
                 <select
-                  id="repayment-account"
+                  id="debt-repayment-account"
                   value={
                     accountId
                   }
                   onChange={(
                     event
-                  ) =>
+                  ) => {
                     setAccountId(
                       event.target
                         .value
-                    )
-                  }
+                    );
+
+                    setError(
+                      ""
+                    );
+                  }}
                   disabled={
                     loading
                   }
@@ -470,7 +463,7 @@ export function RepaymentForm({
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-3">
                 <label
-                  htmlFor="repayment-note"
+                  htmlFor="debt-repayment-note"
                   className="text-sm font-semibold"
                 >
                   Note
@@ -488,7 +481,7 @@ export function RepaymentForm({
               </div>
 
               <textarea
-                id="repayment-note"
+                id="debt-repayment-note"
                 value={
                   note
                 }
@@ -500,11 +493,7 @@ export function RepaymentForm({
                       .value
                   )
                 }
-                placeholder={
-                  isGameWinnings
-                    ? "Cash received, wallet transfer..."
-                    : "Cash returned, bank transfer..."
-                }
+                placeholder="Paid back in cash..."
                 rows={2}
                 disabled={
                   loading
@@ -521,21 +510,43 @@ export function RepaymentForm({
       </section>
 
       {error && (
-        <MessageBox
-          type="error"
-          message={
-            error
-          }
-        />
+        <div
+          className="mt-4 rounded-[var(--radius-md)] px-4 py-3 text-xs leading-5"
+          style={{
+            backgroundColor:
+              "var(--negative-soft)",
+
+            border:
+              "1px solid var(--negative)",
+
+            color:
+              "var(--negative)",
+          }}
+        >
+          {error}
+        </div>
       )}
 
       {success && (
-        <MessageBox
-          type="success"
-          message={
-            success
-          }
-        />
+        <div
+          className="mt-4 flex items-center gap-2 rounded-[var(--radius-md)] px-4 py-3 text-xs font-medium"
+          style={{
+            backgroundColor:
+              "var(--positive-soft)",
+
+            border:
+              "1px solid var(--positive)",
+
+            color:
+              "var(--positive)",
+          }}
+        >
+          <Check
+            size={14}
+          />
+
+          {success}
+        </div>
       )}
 
       <button
@@ -558,7 +569,7 @@ export function RepaymentForm({
 
         {loading
           ? "Recording..."
-          : actionLabel}
+          : "Record Repayment"}
       </button>
     </form>
   );
@@ -582,45 +593,6 @@ function DetailIcon({
       }}
     >
       {children}
-    </div>
-  );
-}
-
-function MessageBox({
-  type,
-  message,
-}: {
-  type:
-    | "error"
-    | "success";
-
-  message: string;
-}) {
-  const success =
-    type ===
-    "success";
-
-  return (
-    <div
-      className="mt-4 rounded-[var(--radius-md)] px-4 py-3 text-xs leading-5"
-      style={{
-        backgroundColor:
-          success
-            ? "var(--positive-soft)"
-            : "var(--negative-soft)",
-
-        border:
-          success
-            ? "1px solid var(--positive)"
-            : "1px solid var(--negative)",
-
-        color:
-          success
-            ? "var(--positive)"
-            : "var(--negative)",
-      }}
-    >
-      {message}
     </div>
   );
 }
